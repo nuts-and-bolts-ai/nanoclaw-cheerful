@@ -1,3 +1,6 @@
+# nanoclaw-cheerful
+Cheerful AI assistant for campaign management via Slack.
+
 <p align="center">
   <img src="assets/nanoclaw-logo.png" alt="NanoClaw" width="400">
 </p>
