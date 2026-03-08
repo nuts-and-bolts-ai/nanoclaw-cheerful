@@ -1,0 +1,9 @@
+{
+  "name": "gmail-imap-tool",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "imapflow": "^1.0.171",
+    "mailparser": "^3.7.2"
+  }
+}
