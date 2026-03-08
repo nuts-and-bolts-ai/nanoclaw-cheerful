@@ -288,6 +288,10 @@ function readSecrets(): Record<string, string> {
     // Sentry (one token per org)
     'SENTRY_AUTH_TOKEN_CHEERFUL',
     'SENTRY_AUTH_TOKEN_CGC',
+    // Cheerful backend (Supabase + API)
+    'SUPABASE_URL',
+    'SUPABASE_SERVICE_ROLE_KEY',
+    'CHEERFUL_BACKEND_URL',
   ]);
 }
 
