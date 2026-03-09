@@ -48,6 +48,11 @@ interface SessionsIndex {
   entries: SessionEntry[];
 }
 
+interface IpcMessage {
+  text: string;
+  threadTs?: string;
+}
+
 interface SDKUserMessage {
   type: 'user';
   message: { role: 'user'; content: string };
@@ -298,21 +303,21 @@ function shouldClose(): boolean {
  * Drain all pending IPC input messages.
  * Returns messages found, or empty array.
  */
-function drainIpcInput(): string[] {
+function drainIpcInput(): IpcMessage[] {
   try {
     fs.mkdirSync(IPC_INPUT_DIR, { recursive: true });
     const files = fs.readdirSync(IPC_INPUT_DIR)
       .filter(f => f.endsWith('.json'))
       .sort();
 
-    const messages: string[] = [];
+    const messages: IpcMessage[] = [];
     for (const file of files) {
       const filePath = path.join(IPC_INPUT_DIR, file);
       try {
         const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
         fs.unlinkSync(filePath);
         if (data.type === 'message' && data.text) {
-          messages.push(data.text);
+          messages.push({ text: data.text, threadTs: data.threadTs });
         }
       } catch (err) {
         log(`Failed to process input file ${file}: ${err instanceof Error ? err.message : String(err)}`);
@@ -330,7 +335,7 @@ function drainIpcInput(): string[] {
  * Wait for a new IPC message or _close sentinel.
  * Returns the messages as a single string, or null if _close.
  */
-function waitForIpcMessage(): Promise<string | null> {
+function waitForIpcMessage(): Promise<IpcMessage | null> {
   return new Promise((resolve) => {
     const poll = () => {
       if (shouldClose()) {
@@ -339,7 +344,12 @@ function waitForIpcMessage(): Promise<string | null> {
       }
       const messages = drainIpcInput();
       if (messages.length > 0) {
-        resolve(messages.join('\n'));
+        // Combine multiple pending messages, use the threadTs from the last one
+        const combined: IpcMessage = {
+          text: messages.map(m => m.text).join('\n'),
+          threadTs: messages[messages.length - 1].threadTs,
+        };
+        resolve(combined);
         return;
       }
       setTimeout(poll, IPC_POLL_MS);
@@ -378,9 +388,9 @@ async function runQuery(
       return;
     }
     const messages = drainIpcInput();
-    for (const text of messages) {
-      log(`Piping IPC message into active query (${text.length} chars)`);
-      stream.push(text);
+    for (const msg of messages) {
+      log(`Piping IPC message into active query (${msg.text.length} chars)`);
+      stream.push(msg.text);
     }
     setTimeout(pollIpcDuringQuery, IPC_POLL_MS);
   };
@@ -542,14 +552,22 @@ async function main(): Promise<void> {
   const pending = drainIpcInput();
   if (pending.length > 0) {
     log(`Draining ${pending.length} pending IPC messages into initial prompt`);
-    prompt += '\n' + pending.join('\n');
+    prompt += '\n' + pending.map(m => m.text).join('\n');
   }
+
+  // Track current thread for session continuity.
+  // Same thread = resume session. Different thread = fresh session.
+  let currentThreadTs: string | undefined;
+
+  // Extract thread_ts from the initial prompt's XML if present
+  const initialThreadMatch = containerInput.prompt.match(/thread="([^"]+)"/);
+  currentThreadTs = initialThreadMatch?.[1];
 
   // Query loop: run query → wait for IPC message → run new query → repeat
   let resumeAt: string | undefined;
   try {
     while (true) {
-      log(`Starting query (session: ${sessionId || 'new'}, resumeAt: ${resumeAt || 'latest'})...`);
+      log(`Starting query (session: ${sessionId || 'new'}, thread: ${currentThreadTs || 'none'}, resumeAt: ${resumeAt || 'latest'})...`);
 
       const queryResult = await runQuery(prompt, sessionId, mcpServerPath, containerInput, sdkEnv, resumeAt);
       if (queryResult.newSessionId) {
@@ -579,8 +597,19 @@ async function main(): Promise<void> {
         break;
       }
 
-      log(`Got new message (${nextMessage.length} chars), starting new query`);
-      prompt = nextMessage;
+      // Check if thread changed — if so, start a fresh session
+      const newThreadTs = nextMessage.threadTs;
+      if (newThreadTs !== currentThreadTs) {
+        log(`Thread changed (${currentThreadTs || 'none'} -> ${newThreadTs || 'none'}), starting fresh session`);
+        sessionId = undefined;
+        resumeAt = undefined;
+        currentThreadTs = newThreadTs;
+      } else {
+        log(`Same thread (${currentThreadTs || 'none'}), resuming session`);
+      }
+
+      log(`Got new message (${nextMessage.text.length} chars), starting new query`);
+      prompt = nextMessage.text;
     }
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : String(err);
