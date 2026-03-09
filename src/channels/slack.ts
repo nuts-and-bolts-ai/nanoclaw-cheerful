@@ -183,6 +183,16 @@ export class SlackChannel implements Channel {
         }
       }
 
+      // Determine thread_ts for session tracking:
+      // - Thread reply: use thread_ts (the parent message)
+      // - Top-level @mention: use msg.ts (this message will be the thread parent)
+      // - Other top-level: undefined
+      const messageThreadTs = isThreadReply
+        ? threadTs
+        : isBotMentioned
+          ? msg.ts
+          : undefined;
+
       this.opts.onMessage(jid, {
         id: msg.ts,
         chat_jid: jid,
@@ -192,6 +202,7 @@ export class SlackChannel implements Channel {
         timestamp,
         is_from_me: isBotMessage,
         is_bot_message: isBotMessage,
+        thread_ts: messageThreadTs,
       });
     });
   }
