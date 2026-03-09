@@ -58,15 +58,9 @@ def get_user_jwt(email: str) -> str:
 
 ### Which user to authenticate as
 
-- **Creator search & list operations**: Use the Cheerful admin email `chris@nutsandbolts.ai` — the Influencer Club API key is platform-level, not per-client.
-- **Shopify order creation**: Use one of the CLIENT_IDS from your CLAUDE.md — the order must be created under the campaign owner's account.
+Use the campaign owner's email — the order must be created under their account. Resolve from CLIENT_IDS in your CLAUDE.md if needed.
 
 ```python
-# For creator search operations
-ADMIN_EMAIL = 'chris@nutsandbolts.ai'
-admin_jwt = get_user_jwt(ADMIN_EMAIL)
-
-# For order operations, get the user's email from CLIENT_IDS
 def get_user_email(user_id: str) -> str:
     url = f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}"
     req = urllib.request.Request(url, headers={
