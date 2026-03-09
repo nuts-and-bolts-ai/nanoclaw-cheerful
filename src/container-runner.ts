@@ -80,8 +80,9 @@ function hashDirectory(dirPath: string): string {
 function buildVolumeMounts(
   group: RegisteredGroup,
   isMain: boolean,
-): VolumeMount[] {
+): { mounts: VolumeMount[]; skillsChanged: boolean } {
   const mounts: VolumeMount[] = [];
+  let skillsChanged = false;
   const projectRoot = process.cwd();
   const groupDir = resolveGroupFolderPath(group.folder);
 
@@ -200,6 +201,7 @@ function buildVolumeMounts(
         'Skills changed, clearing session to force reload',
       );
       deleteSession(group.folder);
+      skillsChanged = true;
     }
   }
   mounts.push({
@@ -254,7 +256,7 @@ function buildVolumeMounts(
     mounts.push(...validatedMounts);
   }
 
-  return mounts;
+  return { mounts, skillsChanged };
 }
 
 /**
@@ -344,7 +346,10 @@ export async function runContainerAgent(
   const groupDir = resolveGroupFolderPath(group.folder);
   fs.mkdirSync(groupDir, { recursive: true });
 
-  const mounts = buildVolumeMounts(group, input.isMain);
+  const { mounts, skillsChanged } = buildVolumeMounts(group, input.isMain);
+  if (skillsChanged) {
+    input.sessionId = undefined;
+  }
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
   const containerName = `nanoclaw-${safeName}-${Date.now()}`;
   const containerArgs = buildContainerArgs(mounts, containerName);
