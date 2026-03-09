@@ -40,6 +40,7 @@ export class SlackChannel implements Channel {
   private flushing = false;
   private userNameCache = new Map<string, string>();
   private threadTargets = new Map<string, string>(); // jid -> ts to reply in thread
+  private activeThreads = new Map<string, Set<string>>(); // jid -> set of thread parent ts where bot is active
 
   private opts: SlackChannelOpts;
 
@@ -82,11 +83,9 @@ export class SlackChannel implements Channel {
 
       if (!msg.text) return;
 
-      // Threaded replies are flattened into the channel conversation.
-      // The agent sees them alongside channel-level messages; responses
-      // always go to the channel, not back into the thread.
-
       const jid = `slack:${msg.channel}`;
+      const threadTs = (msg as { thread_ts?: string }).thread_ts;
+      const isThreadReply = !!threadTs;
       const timestamp = new Date(parseFloat(msg.ts) * 1000).toISOString();
       const isGroup = msg.channel_type !== 'im';
 
@@ -155,25 +154,33 @@ export class SlackChannel implements Channel {
       // Slack encodes @mentions as <@U12345>, which won't match TRIGGER_PATTERN
       // (e.g., ^@<ASSISTANT_NAME>\b), so we prepend the trigger when the bot is @mentioned.
       let content = msg.text;
-      if (this.botUserId && !isBotMessage) {
-        const mentionPattern = `<@${this.botUserId}>`;
-        if (
-          content.includes(mentionPattern) &&
-          !TRIGGER_PATTERN.test(content)
-        ) {
-          content = `@${ASSISTANT_NAME} ${content}`;
-        }
+      const isBotMentioned = !!(this.botUserId && !isBotMessage && msg.text.includes(`<@${this.botUserId}>`));
+      if (isBotMentioned && !TRIGGER_PATTERN.test(content)) {
+        content = `@${ASSISTANT_NAME} ${content}`;
       }
 
-      // Track thread target for non-main channels so replies go in-thread
+      // Thread tracking: @mention starts a thread, replies in active threads auto-trigger
       const group = groups[jid];
-      if (
-        group?.requiresTrigger &&
-        !isBotMessage &&
-        this.botUserId &&
-        msg.text.includes(`<@${this.botUserId}>`)
-      ) {
-        this.threadTargets.set(jid, msg.ts);
+      if (group?.requiresTrigger && !isBotMessage && this.botUserId) {
+        const jidThreads = this.activeThreads.get(jid);
+        const isInActiveThread = isThreadReply && jidThreads?.has(threadTs);
+
+        if (isBotMentioned) {
+          // Explicit @mention — track this thread as active
+          const threadParent = isThreadReply ? threadTs : msg.ts;
+          this.threadTargets.set(jid, threadParent);
+          if (!jidThreads) {
+            this.activeThreads.set(jid, new Set([threadParent]));
+          } else {
+            jidThreads.add(threadParent);
+          }
+        } else if (isInActiveThread) {
+          // Reply in an active bot thread — auto-trigger without @mention
+          this.threadTargets.set(jid, threadTs);
+          if (!TRIGGER_PATTERN.test(content)) {
+            content = `@${ASSISTANT_NAME} ${content}`;
+          }
+        }
       }
 
       this.opts.onMessage(jid, {
@@ -243,8 +250,8 @@ export class SlackChannel implements Channel {
           });
         }
       }
-      // Clear thread target after sending so next trigger starts a new thread
-      if (thread_ts) this.threadTargets.delete(jid);
+      // Thread target persists — replies in the same thread continue auto-triggering.
+      // A new @mention in the channel starts a fresh thread.
       logger.info({ jid, length: text.length, threaded: !!thread_ts }, 'Slack message sent');
     } catch (err) {
       this.outgoingQueue.push({ jid, text });
