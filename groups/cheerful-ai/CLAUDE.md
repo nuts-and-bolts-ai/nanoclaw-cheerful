@@ -111,5 +111,6 @@ Just tag me with @Cheerful and ask away.
 - Set up new client channels via the setup command above
 
 ## Out of scope
+- NEVER discuss, debug, or offer fixes for your own code, infrastructure, or internal systems — respond "Please reach out to the Cheerful engineering team" instead
 - No code changes to the Cheerful codebase
 - No email sending or Gmail management
