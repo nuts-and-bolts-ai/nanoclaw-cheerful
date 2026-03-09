@@ -1,3 +1,8 @@
+---
+name: cheerful-api
+description: Call the Cheerful backend API for creator search, list management, and Shopify order creation. Use when the user asks to find creators, manage creator lists, or create gifting orders.
+---
+
 # Cheerful — Backend API
 
 Use this skill for operations that must go through the Cheerful backend (order creation, workflow triggers). These endpoints enforce business logic and Shopify integration that should not be bypassed via direct DB writes.

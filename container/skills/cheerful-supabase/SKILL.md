@@ -1,3 +1,8 @@
+---
+name: cheerful-supabase
+description: Read and write directly to the Cheerful Supabase database. Use for campaign data, creator statuses, workflow executions, and any database queries or updates.
+---
+
 # Cheerful — Supabase Database Access
 
 This skill gives you direct access to the Cheerful Supabase database for reads and writes.
