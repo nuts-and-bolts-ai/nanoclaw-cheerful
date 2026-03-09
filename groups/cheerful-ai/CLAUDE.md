@@ -44,7 +44,7 @@ CLIENT_DOMAIN: {DOMAIN}
 SCOPE: client
 
 ## Rules
-- ONLY access data where campaign.client_id = {CLIENT_ID}
+- ONLY access data where campaign.user_id = {CLIENT_ID}
 - NEVER query, read or modify data belonging to other clients
 - If asked about another client, refuse and say "I can only help with {CLIENT_NAME} data in this channel"
 - Use the `cheerful-api` skill for: creating Shopify orders, triggering workflows

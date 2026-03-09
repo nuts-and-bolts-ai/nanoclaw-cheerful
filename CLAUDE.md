@@ -4,10 +4,10 @@ Personal Claude assistant. See [README.md](README.md) for philosophy and setup. 
 
 ## Deployment
 
-NanoClaw runs on a **Hetzner VPS** (CX22, Ubuntu 24.04):
-- **IP:** 5.78.144.214
+NanoClaw runs on a **Hetzner VPS** (CX23, Ubuntu 24.04, eu-central):
+- **IP:** 46.225.110.16
 - **User:** `nanoclaw`
-- **SSH:** `ssh nanoclaw@5.78.144.214`
+- **SSH:** `ssh nanoclaw@46.225.110.16`
 - **Install path:** `~/nanoclaw`
 - **Service:** `systemctl --user {start|stop|restart|status} nanoclaw`
 - **Logs:** `~/nanoclaw/logs/nanoclaw.log`
@@ -15,12 +15,12 @@ NanoClaw runs on a **Hetzner VPS** (CX22, Ubuntu 24.04):
 The local repo on the laptop is for development only. To deploy changes:
 ```bash
 git push origin main
-ssh nanoclaw@5.78.144.214 "cd ~/nanoclaw && git pull && npm run build && systemctl --user restart nanoclaw"
+ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw && git pull && npm run build && systemctl --user restart nanoclaw"
 ```
 
 If the container image changed (Dockerfile, agent-runner, or skills that need rebuild):
 ```bash
-ssh nanoclaw@5.78.144.214 "cd ~/nanoclaw && git pull && ./container/build.sh && npm run build && systemctl --user restart nanoclaw"
+ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw && git pull && ./container/build.sh && npm run build && systemctl --user restart nanoclaw"
 ```
 
 ## Quick Context
@@ -65,9 +65,9 @@ npm run build        # Compile TypeScript
 
 Service management (run on VPS via SSH):
 ```bash
-ssh nanoclaw@5.78.144.214 "systemctl --user restart nanoclaw"
-ssh nanoclaw@5.78.144.214 "systemctl --user status nanoclaw"
-ssh nanoclaw@5.78.144.214 "tail -50 ~/nanoclaw/logs/nanoclaw.log"
+ssh nanoclaw@46.225.110.16 "systemctl --user restart nanoclaw"
+ssh nanoclaw@46.225.110.16 "systemctl --user status nanoclaw"
+ssh nanoclaw@46.225.110.16 "tail -50 ~/nanoclaw/logs/nanoclaw.log"
 ```
 
 ## Troubleshooting

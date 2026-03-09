@@ -4,7 +4,7 @@ This skill gives you direct access to the Cheerful Supabase database for reads a
 
 ## CRITICAL: Always scope by client
 
-**Every query MUST filter by the client's ID** (found in your CLAUDE.md as `CLIENT_ID`).
+**Every query MUST filter by the client's user ID** (found in your CLAUDE.md as `CLIENT_ID`). The database column is `user_id` on the campaign table.
 Never access data belonging to other clients. If `SCOPE: global`, you may query across clients but must confirm with the user first.
 
 ## Setup (once per session)
@@ -52,18 +52,11 @@ def supabase_post(table, body):
 
 ## Key Tables & Schema
 
-### `client`
-| Column | Type | Notes |
-|--------|------|-------|
-| id | uuid | PK |
-| name | text | e.g. "Spacegoods" |
-| domain | text | e.g. "spacegoods.com" |
-
 ### `campaign`
 | Column | Type | Notes |
 |--------|------|-------|
 | id | uuid | PK |
-| client_id | uuid | FK → client |
+| user_id | uuid | FK → auth.users (campaign owner) |
 | name | text | |
 | status | text | DRAFT, ACTIVE, COMPLETED |
 | campaign_type | text | GIFTING, PAID_PROMOTION |
@@ -112,7 +105,7 @@ def supabase_post(table, body):
 ```python
 CLIENT_ID = "your-client-id-from-CLAUDE.md"
 
-campaigns = supabase_get('campaign', f'client_id=eq.{CLIENT_ID}&select=id,name,status,campaign_type&order=created_at.desc')
+campaigns = supabase_get('campaign', f'user_id=eq.{CLIENT_ID}&select=id,name,status,campaign_type&order=created_at.desc')
 for c in campaigns:
     print(f"{c['name']} — {c['status']} ({c['campaign_type']})")
 ```
@@ -128,7 +121,7 @@ for c in creators:
 ### Get all creators across all campaigns for a client
 ```python
 # Get campaign IDs for this client first
-campaigns = supabase_get('campaign', f'client_id=eq.{CLIENT_ID}&select=id,name')
+campaigns = supabase_get('campaign', f'user_id=eq.{CLIENT_ID}&select=id,name')
 campaign_ids = ','.join([c['id'] for c in campaigns])
 
 creators = supabase_get('campaign_creator',
@@ -148,13 +141,6 @@ print(f"Updated {updated[0]['name']} to SKIPPED")
 creators = supabase_get('campaign_creator',
     f'campaign_id=in.({campaign_ids})&gifting_status=eq.READY_TO_SHIP&shopify_order_id=is.null&select=id,name,email,gifting_address')
 print(f"{len(creators)} creators need orders creating")
-```
-
-### Look up client by domain (used in setup command)
-```python
-def find_client_by_domain(domain: str):
-    results = supabase_get('client', f'domain=eq.{domain}&select=id,name,domain')
-    return results[0] if results else None
 ```
 
 ### Get creator's workflow execution (for order creation)
