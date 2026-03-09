@@ -268,7 +268,10 @@ async function runAgent(
   onOutput?: (output: ContainerOutput) => Promise<void>,
 ): Promise<'success' | 'error'> {
   const isMain = group.isMain === true;
-  const sessionId = sessions[group.folder];
+  // Always start fresh sessions for new containers.
+  // The SDK's auto-memory (MEMORY.md) handles cross-session continuity.
+  // Per-thread resume is handled inside the agent-runner via IPC thread metadata.
+  const sessionId = undefined;
 
   // Update tasks snapshot for container to read (filtered by group)
   const tasks = getAllTasks();
