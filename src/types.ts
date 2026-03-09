@@ -51,6 +51,7 @@ export interface NewMessage {
   timestamp: string;
   is_from_me?: boolean;
   is_bot_message?: boolean;
+  thread_ts?: string; // Slack thread parent timestamp (undefined = top-level message)
 }
 
 export interface ScheduledTask {
