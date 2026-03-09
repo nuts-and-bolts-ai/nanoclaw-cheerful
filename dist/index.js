@@ -121,8 +121,6 @@ async function processGroupMessages(chatJid) {
         }, IDLE_TIMEOUT);
     };
     await channel.setTyping?.(chatJid, true);
-    // Send immediate acknowledgment so the user knows the bot is working
-    await channel.sendMessage(chatJid, 'On it — give me a moment.');
     let hadError = false;
     let outputSentToUser = false;
     const output = await runAgent(group, prompt, chatJid, async (result) => {

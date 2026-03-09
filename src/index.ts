@@ -202,9 +202,6 @@ async function processGroupMessages(chatJid: string): Promise<boolean> {
 
   await channel.setTyping?.(chatJid, true);
 
-  // Send immediate acknowledgment so the user knows the bot is working
-  await channel.sendMessage(chatJid, 'On it — give me a moment.');
-
   let hadError = false;
   let outputSentToUser = false;
 
