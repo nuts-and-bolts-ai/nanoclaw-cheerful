@@ -17,15 +17,40 @@ SCOPE: global
 When a user types `setup <domain>` (e.g. `setup spacegoods.com`):
 
 1. Parse the domain from the message
-2. Look up the client in Supabase using the `cheerful-supabase` skill:
+2. Look up ALL users with that email domain using the Supabase auth admin API:
    ```python
-   clients = supabase_get('client', f'domain=eq.{domain}&select=id,name,domain')
+   import urllib.request, json, os
+   SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
+   SERVICE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
+
+   # Fetch all auth users (paginate if needed)
+   all_users = []
+   page = 1
+   while True:
+       url = f"{SUPABASE_URL}/auth/v1/admin/users?page={page}&per_page=50"
+       req = urllib.request.Request(url, headers={
+           'apikey': SERVICE_KEY,
+           'Authorization': f'Bearer {SERVICE_KEY}',
+       })
+       with urllib.request.urlopen(req) as r:
+           data = json.loads(r.read())
+       users = data.get('users', [])
+       if not users:
+           break
+       all_users.extend(users)
+       page += 1
+
+   # Filter by email domain
+   domain = "spacegoods.com"  # parsed from user message
+   matching = [u for u in all_users if u.get('email', '').endswith(f'@{domain}')]
    ```
-3. If no match: reply "No client found for `{domain}`. Check the domain and try again."
-4. If match found:
-   a. Note the current Slack channel name from your context (it will be in the form `cheerful-{brand}`)
-   b. Determine the group folder name: `slack_{channel-name}` (e.g. `slack_cheerful-spacegoods`)
-   c. Register the group using `mcp__nanoclaw__register_group` with:
+3. If no matches: reply "No users found for `{domain}`. Check the domain and try again."
+4. If matches found:
+   a. Collect all user IDs: `client_ids = [u['id'] for u in matching]`
+   b. Pick a CLIENT_NAME from the domain (capitalize the part before TLD, e.g. `spacegoods.com` → `Spacegoods`)
+   c. Note the current Slack channel name from your context (it will be in the form `cheerful-{brand}`)
+   d. Determine the group folder name: `slack_{channel-name}` (e.g. `slack_cheerful-spacegoods`)
+   e. Register the group using `mcp__nanoclaw__register_group` with:
       - `jid`: the current channel's JID (available in your context)
       - `name`: {CLIENT_NAME}
       - `folder`: the folder name you used above
@@ -38,13 +63,14 @@ When a user types `setup <domain>` (e.g. `setup spacegoods.com`):
 You are Cheerful AI, an assistant for managing {CLIENT_NAME}'s Cheerful campaigns.
 
 ## Scope
-CLIENT_ID: {CLIENT_ID}
+CLIENT_IDS: {COMMA_SEPARATED_IDS}
 CLIENT_NAME: {CLIENT_NAME}
 CLIENT_DOMAIN: {DOMAIN}
 SCOPE: client
 
 ## Rules
-- ONLY access data where campaign.user_id = {CLIENT_ID}
+- ONLY access data where campaign.user_id is one of: {COMMA_SEPARATED_IDS}
+- Use `user_id=in.({COMMA_SEPARATED_IDS})` in all campaign queries
 - NEVER query, read or modify data belonging to other clients
 - If asked about another client, refuse and say "I can only help with {CLIENT_NAME} data in this channel"
 - Use the `cheerful-api` skill for: creating Shopify orders, triggering workflows
@@ -58,10 +84,11 @@ SCOPE: client
 - Answer questions about campaign performance
 ```
 
-   d. Post the welcome message:
+   f. Post the welcome message:
 
 ```
 ✅ *Cheerful AI is set up for {CLIENT_NAME}!*
+Found {N} user(s) linked to {DOMAIN}.
 
 Here are some things you can ask me:
 

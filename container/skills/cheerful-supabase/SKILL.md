@@ -4,7 +4,13 @@ This skill gives you direct access to the Cheerful Supabase database for reads a
 
 ## CRITICAL: Always scope by client
 
-**Every query MUST filter by the client's user ID** (found in your CLAUDE.md as `CLIENT_ID`). The database column is `user_id` on the campaign table.
+**Every query MUST filter by the client's user IDs** (found in your CLAUDE.md as `CLIENT_IDS`). A client may have multiple users (team members) — all their campaigns must be included.
+
+- **Single user:** `user_id=eq.{id}`
+- **Multiple users:** `user_id=in.({id1},{id2},{id3})`
+
+Always use `in.(...)` syntax — it works for both single and multiple IDs.
+
 Never access data belonging to other clients. If `SCOPE: global`, you may query across clients but must confirm with the user first.
 
 ## Setup (once per session)
@@ -103,9 +109,10 @@ def supabase_post(table, body):
 
 ### List all campaigns for a client
 ```python
-CLIENT_ID = "your-client-id-from-CLAUDE.md"
+# From CLAUDE.md CLIENT_IDS — always use in.() syntax
+CLIENT_IDS = "id1,id2,id3"  # comma-separated from CLAUDE.md
 
-campaigns = supabase_get('campaign', f'user_id=eq.{CLIENT_ID}&select=id,name,status,campaign_type&order=created_at.desc')
+campaigns = supabase_get('campaign', f'user_id=in.({CLIENT_IDS})&select=id,name,status,campaign_type&order=created_at.desc')
 for c in campaigns:
     print(f"{c['name']} — {c['status']} ({c['campaign_type']})")
 ```
@@ -120,8 +127,8 @@ for c in creators:
 
 ### Get all creators across all campaigns for a client
 ```python
-# Get campaign IDs for this client first
-campaigns = supabase_get('campaign', f'user_id=eq.{CLIENT_ID}&select=id,name')
+# Get campaign IDs for this client first (use in.() with CLIENT_IDS)
+campaigns = supabase_get('campaign', f'user_id=in.({CLIENT_IDS})&select=id,name')
 campaign_ids = ','.join([c['id'] for c in campaigns])
 
 creators = supabase_get('campaign_creator',
