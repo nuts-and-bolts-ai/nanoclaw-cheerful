@@ -26,7 +26,7 @@ export declare class GroupQueue {
      * Send a follow-up message to the active container via IPC file.
      * Returns true if the message was written, false if no active container.
      */
-    sendMessage(groupJid: string, text: string): boolean;
+    sendMessage(groupJid: string, text: string, threadTs?: string): boolean;
     /**
      * Signal the active container to wind down by writing a close sentinel.
      */

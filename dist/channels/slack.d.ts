@@ -14,6 +14,7 @@ export declare class SlackChannel implements Channel {
     private flushing;
     private userNameCache;
     private threadTargets;
+    private activeThreads;
     private opts;
     constructor(opts: SlackChannelOpts);
     private setupEventHandlers;

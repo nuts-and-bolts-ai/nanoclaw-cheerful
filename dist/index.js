@@ -88,20 +88,20 @@ async function processGroupMessages(chatJid) {
         logger.warn({ chatJid }, 'No channel owns JID, skipping messages');
         return true;
     }
-    const isMainGroup = group.isMain === true;
     const sinceTimestamp = lastAgentTimestamp[chatJid] || '';
     const missedMessages = getMessagesSince(chatJid, sinceTimestamp, ASSISTANT_NAME);
     if (missedMessages.length === 0)
         return true;
-    // For non-main groups, check if trigger is required and present
-    if (!isMainGroup && group.requiresTrigger !== false) {
+    // Check if trigger (@mention) is required and present.
+    // All groups require trigger unless explicitly opted out (requiresTrigger: false).
+    const needsTrigger = group.requiresTrigger !== false;
+    if (needsTrigger) {
         const allowlistCfg = loadSenderAllowlist();
         const hasTrigger = missedMessages.some((m) => TRIGGER_PATTERN.test(m.content.trim()) &&
             (m.is_from_me || isTriggerAllowed(chatJid, m.sender, allowlistCfg)));
         if (!hasTrigger)
             return true;
     }
-    const needsTrigger = !isMainGroup && group.requiresTrigger !== false;
     const prompt = formatMessages(missedMessages, needsTrigger ? TRIGGER_PATTERN : undefined);
     // Advance cursor so the piping path in startMessageLoop won't re-fetch
     // these messages. Save the old cursor so we can roll back on error.
@@ -121,6 +121,8 @@ async function processGroupMessages(chatJid) {
         }, IDLE_TIMEOUT);
     };
     await channel.setTyping?.(chatJid, true);
+    // Send immediate acknowledgment so the user knows the bot is working
+    await channel.sendMessage(chatJid, 'On it — give me a moment.');
     let hadError = false;
     let outputSentToUser = false;
     const output = await runAgent(group, prompt, chatJid, async (result) => {
@@ -166,7 +168,10 @@ async function processGroupMessages(chatJid) {
 }
 async function runAgent(group, prompt, chatJid, onOutput) {
     const isMain = group.isMain === true;
-    const sessionId = sessions[group.folder];
+    // Always start fresh sessions for new containers.
+    // The SDK's auto-memory (MEMORY.md) handles cross-session continuity.
+    // Per-thread resume is handled inside the agent-runner via IPC thread metadata.
+    const sessionId = undefined;
     // Update tasks snapshot for container to read (filtered by group)
     const tasks = getAllTasks();
     writeTasksSnapshot(group.folder, isMain, tasks.map((t) => ({
@@ -251,9 +256,8 @@ async function startMessageLoop() {
                         logger.warn({ chatJid }, 'No channel owns JID, skipping messages');
                         continue;
                     }
-                    const isMainGroup = group.isMain === true;
-                    const needsTrigger = !isMainGroup && group.requiresTrigger !== false;
-                    // For non-main groups, only act on trigger messages.
+                    const needsTrigger = group.requiresTrigger !== false;
+                    // Only act on trigger messages when trigger is required.
                     // Non-trigger messages accumulate in DB and get pulled as
                     // context when a trigger eventually arrives.
                     if (needsTrigger) {
@@ -269,7 +273,14 @@ async function startMessageLoop() {
                     const allPending = getMessagesSince(chatJid, lastAgentTimestamp[chatJid] || '', ASSISTANT_NAME);
                     const messagesToSend = allPending.length > 0 ? allPending : groupMessages;
                     const formatted = formatMessages(messagesToSend, needsTrigger ? TRIGGER_PATTERN : undefined);
-                    if (queue.sendMessage(chatJid, formatted)) {
+                    // Extract thread_ts from the trigger message for session tracking
+                    const triggerMsg = messagesToSend.find((m) => TRIGGER_PATTERN.test(m.content.trim()));
+                    const threadTs = triggerMsg?.thread_ts;
+                    if (queue.sendMessage(chatJid, formatted, threadTs)) {
+                        // Ack only when piping succeeds (new container path has its own ack)
+                        channel
+                            .sendMessage(chatJid, 'On it — give me a moment.')
+                            .catch((err) => logger.warn({ chatJid, err }, 'Failed to send piped ack'));
                         logger.debug({ chatJid, count: messagesToSend.length }, 'Piped messages to active container');
                         lastAgentTimestamp[chatJid] =
                             messagesToSend[messagesToSend.length - 1].timestamp;

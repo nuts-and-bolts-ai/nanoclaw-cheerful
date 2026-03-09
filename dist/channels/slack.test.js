@@ -346,6 +346,49 @@ describe('SlackChannel', () => {
             await triggerMessageEvent(event);
             expect(opts.onMessage).toHaveBeenCalled();
         });
+        it('passes thread_ts to onMessage for thread replies', async () => {
+            const opts = createTestOpts();
+            const channel = new SlackChannel(opts);
+            await channel.connect();
+            const event = createMessageEvent({
+                text: `<@U_BOT_123> help`,
+                user: 'U_USER_456',
+                ts: '1111.2222',
+                threadTs: '1111.0000',
+            });
+            await triggerMessageEvent(event);
+            expect(opts.onMessage).toHaveBeenCalledWith('slack:C0123456789', expect.objectContaining({
+                thread_ts: '1111.0000',
+            }));
+        });
+        it('passes message ts as thread_ts for top-level @mentions (thread starter)', async () => {
+            const opts = createTestOpts();
+            const channel = new SlackChannel(opts);
+            await channel.connect();
+            const event = createMessageEvent({
+                text: `<@U_BOT_123> help`,
+                user: 'U_USER_456',
+                ts: '2222.3333',
+            });
+            await triggerMessageEvent(event);
+            expect(opts.onMessage).toHaveBeenCalledWith('slack:C0123456789', expect.objectContaining({
+                thread_ts: '2222.3333',
+            }));
+        });
+        it('passes undefined thread_ts for non-mention top-level messages', async () => {
+            const opts = createTestOpts();
+            const channel = new SlackChannel(opts);
+            await channel.connect();
+            const event = createMessageEvent({
+                text: 'just a regular message',
+                user: 'U_USER_456',
+                ts: '3333.4444',
+            });
+            await triggerMessageEvent(event);
+            expect(opts.onMessage).toHaveBeenCalledWith('slack:C0123456789', expect.objectContaining({
+                thread_ts: undefined,
+            }));
+        });
     });
     // --- @mention translation ---
     describe('@mention translation', () => {

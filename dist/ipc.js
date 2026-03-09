@@ -3,7 +3,7 @@ import path from 'path';
 import { CronExpressionParser } from 'cron-parser';
 import { DATA_DIR, IPC_POLL_INTERVAL, TIMEZONE } from './config.js';
 import { createTask, deleteTask, getTaskById, updateTask } from './db.js';
-import { isValidGroupFolder } from './group-folder.js';
+import { isValidGroupFolder, resolveGroupFolderPath } from './group-folder.js';
 import { logger } from './logger.js';
 let ipcWatcherRunning = false;
 export function startIpcWatcher(deps) {
@@ -248,6 +248,13 @@ deps) {
                     containerConfig: data.containerConfig,
                     requiresTrigger: data.requiresTrigger,
                 });
+                // Write CLAUDE.md to the group folder if provided
+                if (data.claudeMd) {
+                    const groupDir = resolveGroupFolderPath(data.folder);
+                    fs.mkdirSync(groupDir, { recursive: true });
+                    fs.writeFileSync(path.join(groupDir, 'CLAUDE.md'), data.claudeMd);
+                    logger.info({ folder: data.folder }, 'Wrote CLAUDE.md for registered group');
+                }
             }
             else {
                 logger.warn({ data }, 'Invalid register_group request - missing required fields');

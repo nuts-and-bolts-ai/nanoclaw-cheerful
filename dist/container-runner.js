@@ -40,6 +40,7 @@ function hashDirectory(dirPath) {
 }
 function buildVolumeMounts(group, isMain) {
     const mounts = [];
+    let skillsChanged = false;
     const projectRoot = process.cwd();
     const groupDir = resolveGroupFolderPath(group.folder);
     if (isMain) {
@@ -139,6 +140,7 @@ function buildVolumeMounts(group, isMain) {
         if (oldHash !== newHash) {
             logger.info({ group: group.name, folder: group.folder }, 'Skills changed, clearing session to force reload');
             deleteSession(group.folder);
+            skillsChanged = true;
         }
     }
     mounts.push({
@@ -175,7 +177,7 @@ function buildVolumeMounts(group, isMain) {
         const validatedMounts = validateAdditionalMounts(group.containerConfig.additionalMounts, group.name, isMain);
         mounts.push(...validatedMounts);
     }
-    return mounts;
+    return { mounts, skillsChanged };
 }
 /**
  * Read allowed secrets from .env for passing to the container via stdin.
@@ -208,6 +210,10 @@ function readSecrets() {
         // Sentry (one token per org)
         'SENTRY_AUTH_TOKEN_CHEERFUL',
         'SENTRY_AUTH_TOKEN_CGC',
+        // Cheerful backend (Supabase + API)
+        'SUPABASE_URL',
+        'SUPABASE_SERVICE_ROLE_KEY',
+        'CHEERFUL_BACKEND_URL',
     ]);
 }
 function buildContainerArgs(mounts, containerName) {
@@ -243,7 +249,10 @@ export async function runContainerAgent(group, input, onProcess, onOutput) {
     const startTime = Date.now();
     const groupDir = resolveGroupFolderPath(group.folder);
     fs.mkdirSync(groupDir, { recursive: true });
-    const mounts = buildVolumeMounts(group, input.isMain);
+    const { mounts, skillsChanged } = buildVolumeMounts(group, input.isMain);
+    if (skillsChanged) {
+        input.sessionId = undefined;
+    }
     const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
     const containerName = `nanoclaw-${safeName}-${Date.now()}`;
     const containerArgs = buildContainerArgs(mounts, containerName);

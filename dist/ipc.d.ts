@@ -25,6 +25,7 @@ export declare function processTaskIpc(data: {
     trigger?: string;
     requiresTrigger?: boolean;
     containerConfig?: RegisteredGroup['containerConfig'];
+    claudeMd?: string;
 }, sourceGroup: string, // Verified identity from IPC directory
 isMain: boolean, // Verified from directory path
 deps: IpcDeps): Promise<void>;

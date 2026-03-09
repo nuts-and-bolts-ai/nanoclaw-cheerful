@@ -129,6 +129,13 @@ function createSchema(database) {
     catch {
         /* already migrated or table doesn't exist yet */
     }
+    // Add thread_ts column for per-thread session tracking
+    try {
+        database.exec(`ALTER TABLE messages ADD COLUMN thread_ts TEXT`);
+    }
+    catch {
+        /* column already exists */
+    }
     // Add channel and is_group columns if they don't exist (migration for existing DBs)
     try {
         database.exec(`ALTER TABLE chats ADD COLUMN channel TEXT`);
@@ -230,7 +237,7 @@ export function setLastGroupSync() {
  * Only call this for registered groups where message history is needed.
  */
 export function storeMessage(msg) {
-    db.prepare(`INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(msg.id, msg.chat_jid, msg.sender, msg.sender_name, msg.content, msg.timestamp, msg.is_from_me ? 1 : 0, msg.is_bot_message ? 1 : 0);
+    db.prepare(`INSERT OR REPLACE INTO messages (id, chat_jid, sender, sender_name, content, timestamp, is_from_me, is_bot_message, thread_ts) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(msg.id, msg.chat_jid, msg.sender, msg.sender_name, msg.content, msg.timestamp, msg.is_from_me ? 1 : 0, msg.is_bot_message ? 1 : 0, msg.thread_ts ?? null);
 }
 /**
  * Store a message directly.
@@ -266,16 +273,20 @@ export function getMessagesSince(chatJid, sinceTimestamp, botPrefix) {
     // Filter bot messages using both the is_bot_message flag AND the content
     // prefix as a backstop for messages written before the migration ran.
     const sql = `
-    SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me
+    SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, thread_ts
     FROM messages
     WHERE chat_jid = ? AND timestamp > ?
       AND is_bot_message = 0 AND content NOT LIKE ?
       AND content != '' AND content IS NOT NULL
     ORDER BY timestamp
   `;
-    return db
+    const rows = db
         .prepare(sql)
         .all(chatJid, sinceTimestamp, `${botPrefix}:%`);
+    return rows.map((row) => ({
+        ...row,
+        thread_ts: row.thread_ts || undefined,
+    }));
 }
 export function createTask(task) {
     db.prepare(`
