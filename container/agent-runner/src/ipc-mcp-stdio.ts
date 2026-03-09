@@ -255,6 +255,7 @@ Use available_groups.json to find the JID for a group. The folder name must be c
     name: z.string().describe('Display name for the group'),
     folder: z.string().describe('Channel-prefixed folder name (e.g., "whatsapp_family-chat", "telegram_dev-team")'),
     trigger: z.string().describe('Trigger word (e.g., "@Andy")'),
+    claude_md: z.string().optional().describe('Content for the group CLAUDE.md file. Use this to set up group-specific instructions, CLIENT_ID, scope, and rules. Written to groups/{folder}/CLAUDE.md on the host.'),
   },
   async (args) => {
     if (!isMain) {
@@ -264,12 +265,13 @@ Use available_groups.json to find the JID for a group. The folder name must be c
       };
     }
 
-    const data = {
+    const data: Record<string, string | undefined> = {
       type: 'register_group',
       jid: args.jid,
       name: args.name,
       folder: args.folder,
       trigger: args.trigger,
+      claudeMd: args.claude_md,
       timestamp: new Date().toISOString(),
     };
 

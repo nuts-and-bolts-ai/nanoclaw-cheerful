@@ -1,4 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import fs from 'fs';
+import path from 'path';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 
 import {
   _initTestDatabase,
@@ -10,6 +12,7 @@ import {
 } from './db.js';
 import { processTaskIpc, IpcDeps } from './ipc.js';
 import { RegisteredGroup } from './types.js';
+import { resolveGroupFolderPath } from './group-folder.js';
 
 // Set up registered groups used across tests
 const MAIN_GROUP: RegisteredGroup = {
@@ -674,5 +677,95 @@ describe('register_group success', () => {
     );
 
     expect(getRegisteredGroup('partial@g.us')).toBeUndefined();
+  });
+});
+
+// --- register_group with claudeMd ---
+
+describe('register_group claudeMd', () => {
+  afterEach(() => {
+    // Clean up any created group folders
+    const groupDir = resolveGroupFolderPath('slack_cheerful-test');
+    if (fs.existsSync(groupDir)) {
+      fs.rmSync(groupDir, { recursive: true });
+    }
+  });
+
+  it('writes CLAUDE.md to group folder when claudeMd is provided', async () => {
+    const claudeMdContent = '# Test Group\n\nCLIENT_ID: abc-123\nSCOPE: client';
+
+    await processTaskIpc(
+      {
+        type: 'register_group',
+        jid: 'slack:C999',
+        name: 'Test Client',
+        folder: 'slack_cheerful-test',
+        trigger: '@Cheerful',
+        claudeMd: claudeMdContent,
+      },
+      'whatsapp_main',
+      true,
+      deps,
+    );
+
+    // Verify group was registered
+    const group = getRegisteredGroup('slack:C999');
+    expect(group).toBeDefined();
+    expect(group!.name).toBe('Test Client');
+
+    // Verify CLAUDE.md was written
+    const claudeMdPath = path.join(
+      resolveGroupFolderPath('slack_cheerful-test'),
+      'CLAUDE.md',
+    );
+    expect(fs.existsSync(claudeMdPath)).toBe(true);
+    expect(fs.readFileSync(claudeMdPath, 'utf-8')).toBe(claudeMdContent);
+  });
+
+  it('does not write CLAUDE.md when claudeMd is not provided', async () => {
+    await processTaskIpc(
+      {
+        type: 'register_group',
+        jid: 'slack:C888',
+        name: 'No Claude MD',
+        folder: 'slack_cheerful-test',
+        trigger: '@Cheerful',
+      },
+      'whatsapp_main',
+      true,
+      deps,
+    );
+
+    // Group registered but no CLAUDE.md
+    expect(getRegisteredGroup('slack:C888')).toBeDefined();
+    const claudeMdPath = path.join(
+      resolveGroupFolderPath('slack_cheerful-test'),
+      'CLAUDE.md',
+    );
+    expect(fs.existsSync(claudeMdPath)).toBe(false);
+  });
+
+  it('non-main group cannot write claudeMd even if provided', async () => {
+    await processTaskIpc(
+      {
+        type: 'register_group',
+        jid: 'slack:C777',
+        name: 'Sneaky',
+        folder: 'slack_cheerful-test',
+        trigger: '@Cheerful',
+        claudeMd: '# Injected content',
+      },
+      'other-group',
+      false,
+      deps,
+    );
+
+    // Group should NOT be registered (non-main blocked)
+    expect(getRegisteredGroup('slack:C777')).toBeUndefined();
+
+    // CLAUDE.md should NOT exist
+    const groupDir = resolveGroupFolderPath('slack_cheerful-test');
+    const claudeMdPath = path.join(groupDir, 'CLAUDE.md');
+    expect(fs.existsSync(claudeMdPath)).toBe(false);
   });
 });

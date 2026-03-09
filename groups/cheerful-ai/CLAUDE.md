@@ -25,7 +25,12 @@ When a user types `setup <domain>` (e.g. `setup spacegoods.com`):
 4. If match found:
    a. Note the current Slack channel name from your context (it will be in the form `cheerful-{brand}`)
    b. Determine the group folder name: `slack_{channel-name}` (e.g. `slack_cheerful-spacegoods`)
-   c. Write `groups/{folder}/CLAUDE.md` using the Write tool with this content (substituting values):
+   c. Register the group using `mcp__nanoclaw__register_group` with:
+      - `jid`: the current channel's JID (available in your context)
+      - `name`: {CLIENT_NAME}
+      - `folder`: the folder name you used above
+      - `trigger`: @Cheerful
+      - `claude_md`: the CLAUDE.md content below (substituting values):
 
 ```
 # Cheerful AI — {CLIENT_NAME}
@@ -53,12 +58,7 @@ SCOPE: client
 - Answer questions about campaign performance
 ```
 
-   d. Register the group using `mcp__nanoclaw__register_group` with:
-      - `jid`: the current channel's JID (available in your context)
-      - `name`: {CLIENT_NAME}
-      - `folder`: the folder name you used above
-      - `trigger`: @Cheerful
-   e. Post the welcome message:
+   d. Post the welcome message:
 
 ```
 ✅ *Cheerful AI is set up for {CLIENT_NAME}!*
