@@ -14,15 +14,16 @@ SERVICE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
 
 ## Authentication
 
-All endpoints require a Supabase user JWT. Use the Supabase admin API to generate one for the campaign owner:
+All endpoints require a Supabase user JWT. Use the admin generate_link + verify flow to get one:
 
 ```python
-def get_user_jwt(user_id: str) -> str:
-    """Generate a JWT for a Supabase user via the admin API."""
-    url = f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}/tokens"
+def get_user_jwt(email: str) -> str:
+    """Generate a JWT for a Supabase user via admin magic link + verify."""
+    # Step 1: Generate a magic link (gives us an OTP)
+    url = f"{SUPABASE_URL}/auth/v1/admin/generate_link"
     req = urllib.request.Request(
         url,
-        data=json.dumps({}).encode(),
+        data=json.dumps({'type': 'magiclink', 'email': email}).encode(),
         method='POST',
         headers={
             'apikey': SERVICE_KEY,
@@ -31,23 +32,45 @@ def get_user_jwt(user_id: str) -> str:
         }
     )
     with urllib.request.urlopen(req) as r:
+        link_data = json.loads(r.read())
+    otp = link_data['email_otp']
+
+    # Step 2: Verify the OTP to get an access token
+    verify_url = f"{SUPABASE_URL}/auth/v1/verify"
+    req = urllib.request.Request(
+        verify_url,
+        data=json.dumps({'type': 'magiclink', 'token': otp, 'email': email}).encode(),
+        method='POST',
+        headers={
+            'apikey': SERVICE_KEY,
+            'Content-Type': 'application/json'
+        }
+    )
+    with urllib.request.urlopen(req) as r:
         tokens = json.loads(r.read())
     return tokens['access_token']
 ```
 
-### Finding the campaign owner's user ID
+### Which user to authenticate as
+
+- **Creator search & list operations**: Use the Cheerful admin email `chris@nutsandbolts.ai` — the Influencer Club API key is platform-level, not per-client.
+- **Shopify order creation**: Use one of the CLIENT_IDS from your CLAUDE.md — the order must be created under the campaign owner's account.
 
 ```python
-# Query client_user table to find the owner for a given client_id
-def get_client_owner_user_id(client_id: str) -> str:
-    url = f"{SUPABASE_URL}/rest/v1/client_user?client_id=eq.{client_id}&select=user_id&limit=1"
+# For creator search operations
+ADMIN_EMAIL = 'chris@nutsandbolts.ai'
+admin_jwt = get_user_jwt(ADMIN_EMAIL)
+
+# For order operations, get the user's email from CLIENT_IDS
+def get_user_email(user_id: str) -> str:
+    url = f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}"
     req = urllib.request.Request(url, headers={
         'apikey': SERVICE_KEY,
-        'Authorization': f'Bearer {SERVICE_KEY}'
+        'Authorization': f'Bearer {SERVICE_KEY}',
     })
     with urllib.request.urlopen(req) as r:
-        results = json.loads(r.read())
-    return results[0]['user_id'] if results else None
+        user = json.loads(r.read())
+    return user['email']
 ```
 
 ## Create Shopify Order
@@ -57,11 +80,9 @@ Creates a Shopify order for a creator from their completed workflow execution. A
 **Prerequisite:** The creator must have a `campaign_workflow_execution` with `status='completed'` and `output_data` populated. Use the `cheerful-supabase` skill's `get_order_execution()` helper to find the execution ID.
 
 ```python
-def create_order(execution_id: str, client_id: str) -> dict:
+def create_order(execution_id: str, user_email: str) -> dict:
     """Create a Shopify order for a creator from their workflow execution."""
-    # Get a JWT for the campaign owner
-    user_id = get_client_owner_user_id(client_id)
-    jwt = get_user_jwt(user_id)
+    jwt = get_user_jwt(user_email)
 
     url = f"{BACKEND_URL}/api/v1/shopify/workflow-executions/{execution_id}/orders"
     req = urllib.request.Request(
@@ -76,8 +97,8 @@ def create_order(execution_id: str, client_id: str) -> dict:
     with urllib.request.urlopen(req) as r:
         return json.loads(r.read())
 
-# Example usage
-result = create_order('ec286204-5ded-4124-835b-1d5073751b96', CLIENT_ID)
+# Example usage — use campaign owner's email (resolve from CLIENT_IDS if needed)
+result = create_order('ec286204-5ded-4124-835b-1d5073751b96', 'dan.stevenson@spacegoods.com')
 print(f"Order {result['order_name']} created — ID: {result['order_id']}, Amount: {result['total_amount']} {result['currency_code']}")
 ```
 
@@ -95,7 +116,7 @@ print(f"Order {result['order_name']} created — ID: {result['order_id']}, Amoun
 ## Create Orders for Multiple Creators
 
 ```python
-def create_orders_for_ready_creators(campaign_id: str, client_id: str) -> list:
+def create_orders_for_ready_creators(campaign_id: str, owner_email: str) -> list:
     """Create Shopify orders for all READY_TO_SHIP creators with completed executions."""
     from cheerful_supabase import supabase_get, get_order_execution  # helpers from cheerful-supabase skill
 
@@ -110,7 +131,7 @@ def create_orders_for_ready_creators(campaign_id: str, client_id: str) -> list:
             results.append({'creator': creator['name'], 'status': 'skipped', 'reason': 'no completed execution'})
             continue
         try:
-            order = create_order(execution['id'], client_id)
+            order = create_order(execution['id'], owner_email)
             results.append({'creator': creator['name'], 'status': 'success', 'order_name': order['order_name']})
         except Exception as e:
             results.append({'creator': creator['name'], 'status': 'error', 'reason': str(e)})
@@ -204,12 +225,13 @@ POST /api/v1/creator-search/similar
 ```
 
 ```python
+ADMIN_EMAIL = 'chris@nutsandbolts.ai'
+
 def search_similar_creators(handle: str, platform: str = 'instagram',
                             followers_min=None, followers_max=None,
-                            location=None, client_id=None) -> dict:
+                            location=None) -> dict:
     """Find creators similar to a given handle."""
-    user_id = get_client_owner_user_id(client_id)
-    jwt = get_user_jwt(user_id)
+    jwt = get_user_jwt(ADMIN_EMAIL)
 
     body = {
         'handle': handle,
@@ -255,10 +277,9 @@ POST /api/v1/creator-search/keyword
 ```python
 def search_keyword_creators(keyword: str, platform: str = 'instagram',
                             followers_min=None, followers_max=None,
-                            location=None, client_id=None) -> dict:
+                            location=None) -> dict:
     """Search for creators by keyword."""
-    user_id = get_client_owner_user_id(client_id)
-    jwt = get_user_jwt(user_id)
+    jwt = get_user_jwt(ADMIN_EMAIL)
 
     body = {
         'keyword': keyword,
@@ -306,10 +327,9 @@ POST /api/v1/lists/
 ```
 
 ```python
-def create_list(title: str, client_id: str) -> dict:
+def create_list(title: str) -> dict:
     """Create a new creator list."""
-    user_id = get_client_owner_user_id(client_id)
-    jwt = get_user_jwt(user_id)
+    jwt = get_user_jwt(ADMIN_EMAIL)
 
     req = urllib.request.Request(
         f'{BACKEND_URL}/api/v1/lists/',
@@ -348,10 +368,9 @@ POST /api/v1/lists/{list_id}/creators/from-search
 ```
 
 ```python
-def add_creators_to_list(list_id: str, creators: list, client_id: str) -> dict:
+def add_creators_to_list(list_id: str, creators: list) -> dict:
     """Add creators from search results to a list."""
-    user_id = get_client_owner_user_id(client_id)
-    jwt = get_user_jwt(user_id)
+    jwt = get_user_jwt(ADMIN_EMAIL)
 
     req = urllib.request.Request(
         f'{BACKEND_URL}/api/v1/lists/{list_id}/creators/from-search',
@@ -378,10 +397,9 @@ GET /api/v1/lists/
 ```
 
 ```python
-def get_all_lists(client_id: str) -> dict:
+def get_all_lists() -> dict:
     """Get all creator lists."""
-    user_id = get_client_owner_user_id(client_id)
-    jwt = get_user_jwt(user_id)
+    jwt = get_user_jwt(ADMIN_EMAIL)
 
     req = urllib.request.Request(
         f'{BACKEND_URL}/api/v1/lists/',
@@ -405,10 +423,9 @@ GET /api/v1/lists/{list_id}/creators
 ```
 
 ```python
-def get_list_creators(list_id: str, client_id: str) -> dict:
+def get_list_creators(list_id: str) -> dict:
     """Get all creators in a list."""
-    user_id = get_client_owner_user_id(client_id)
-    jwt = get_user_jwt(user_id)
+    jwt = get_user_jwt(ADMIN_EMAIL)
 
     req = urllib.request.Request(
         f'{BACKEND_URL}/api/v1/lists/{list_id}/creators',
@@ -431,20 +448,17 @@ BACKEND_URL = os.environ.get('CHEERFUL_BACKEND_URL', 'https://prd-cheerful.fly.d
 SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
 SERVICE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
 
-CLIENT_ID = 'your-client-id'
-
-# Step 1: Search for similar creators
+# Step 1: Search for similar creators (uses admin JWT automatically)
 results = search_similar_creators(
     handle='laurpottsx',
     platform='instagram',
     followers_max=50000,
-    location=['United Kingdom'],
-    client_id=CLIENT_ID
+    location=['United Kingdom']
 )
 print(f"Found {results['total']} similar creators")
 
 # Step 2: Create a list
-new_list = create_list('UK Wellness Micro-Influencers', CLIENT_ID)
+new_list = create_list('UK Wellness Micro-Influencers')
 list_id = new_list['id']
 print(f"Created list: {new_list['title']} (ID: {list_id})")
 
@@ -453,18 +467,18 @@ creators_to_add = [
     {
         'platform': 'instagram',
         'handle': c['username'],
-        'name': c['full_name'],
-        'follower_count': c['follower_count']
+        'name': c.get('full_name'),
+        'follower_count': c.get('follower_count', 0)
     }
     for c in results['creators']
 ]
-add_result = add_creators_to_list(list_id, creators_to_add, CLIENT_ID)
+add_result = add_creators_to_list(list_id, creators_to_add)
 print(f"Added {add_result['added_count']} creators to list (skipped {add_result['skipped_count']})")
 
 # Step 4: Verify — list creators in the list
-list_creators = get_list_creators(list_id, CLIENT_ID)
+list_creators = get_list_creators(list_id)
 for c in list_creators['items']:
-    print(f"  - @{c['handle']} ({c['name']}) — {c['follower_count']} followers")
+    print(f"  - @{c['handle']} ({c.get('name','')}) — {c.get('follower_count',0)} followers")
 ```
 
 ## Error Handling for Creator Search & Lists
