@@ -512,7 +512,10 @@ async function main(): Promise<void> {
   // Build SDK env: merge secrets into process.env for the SDK only.
   // Secrets never touch process.env itself, so Bash subprocesses can't see them.
   // Exception: GITHUB_TOKEN is exposed to process.env so gh CLI and git can use it.
-  const BASH_VISIBLE_SECRETS = ['GITHUB_TOKEN', 'LINEAR_API_KEY', 'SLACK_BOT_TOKEN'];
+  const BASH_VISIBLE_SECRETS = [
+    'GITHUB_TOKEN', 'LINEAR_API_KEY', 'SLACK_BOT_TOKEN',
+    'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'CHEERFUL_BACKEND_URL',
+  ];
   const sdkEnv: Record<string, string | undefined> = { ...process.env };
   for (const [key, value] of Object.entries(containerInput.secrets || {})) {
     sdkEnv[key] = value;
