@@ -418,7 +418,13 @@ async function startMessageLoop(): Promise<void> {
             needsTrigger ? TRIGGER_PATTERN : undefined,
           );
 
-          if (queue.sendMessage(chatJid, formatted)) {
+          // Extract thread_ts from the trigger message for session tracking
+          const triggerMsg = messagesToSend.find(
+            (m) => TRIGGER_PATTERN.test(m.content.trim()),
+          );
+          const threadTs = triggerMsg?.thread_ts;
+
+          if (queue.sendMessage(chatJid, formatted, threadTs)) {
             logger.debug(
               { chatJid, count: messagesToSend.length },
               'Piped messages to active container',

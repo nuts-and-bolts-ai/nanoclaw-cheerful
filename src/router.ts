@@ -18,7 +18,8 @@ export function formatMessages(
       triggerPattern && triggerPattern.test(m.content.trim())
         ? 'trigger'
         : 'message';
-    return `<${tag} sender="${escapeXml(m.sender_name)}" time="${m.timestamp}">${escapeXml(m.content)}</${tag}>`;
+    const threadAttr = m.thread_ts ? ` thread="${escapeXml(m.thread_ts)}"` : '';
+    return `<${tag} sender="${escapeXml(m.sender_name)}" time="${m.timestamp}"${threadAttr}>${escapeXml(m.content)}</${tag}>`;
   });
   return `<messages>\n${lines.join('\n')}\n</messages>`;
 }
