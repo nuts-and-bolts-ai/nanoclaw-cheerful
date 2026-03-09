@@ -427,14 +427,13 @@ async function startMessageLoop(): Promise<void> {
           );
           const threadTs = triggerMsg?.thread_ts;
 
-          // Send acknowledgment for piped messages (same as new container path)
-          channel
-            .sendMessage(chatJid, 'On it — give me a moment.')
-            .catch((err) =>
-              logger.warn({ chatJid, err }, 'Failed to send piped ack'),
-            );
-
           if (queue.sendMessage(chatJid, formatted, threadTs)) {
+            // Ack only when piping succeeds (new container path has its own ack)
+            channel
+              .sendMessage(chatJid, 'On it — give me a moment.')
+              .catch((err) =>
+                logger.warn({ chatJid, err }, 'Failed to send piped ack'),
+              );
             logger.debug(
               { chatJid, count: messagesToSend.length },
               'Piped messages to active container',
