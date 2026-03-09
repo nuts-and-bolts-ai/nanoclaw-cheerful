@@ -164,3 +164,324 @@ execution['output_data']['shipping_address'] = addr
 supabase_patch('campaign_workflow_execution', f'id=eq.{execution_id}',
     {'output_data': execution['output_data']})
 ```
+
+## Creator Search — Similar
+
+Find creators similar to a given handle. Useful for discovering influencers with a similar audience or content style.
+
+```
+POST /api/v1/creator-search/similar
+```
+
+**Request body:**
+```json
+{
+  "handle": "laurpottsx",
+  "platform": "instagram",
+  "followers": {"min": null, "max": 50000},
+  "location": ["United Kingdom"]
+}
+```
+
+**Response:**
+```json
+{
+  "creators": [
+    {
+      "id": "abc123",
+      "username": "wellnesswithsophie",
+      "full_name": "Sophie Taylor",
+      "follower_count": 34200,
+      "biography": "Wellness & lifestyle | UK based",
+      "email": "sophie@example.com",
+      "engagement_rate": 0.05
+    }
+  ],
+  "total": 48,
+  "has_more": true,
+  "page": 1
+}
+```
+
+```python
+def search_similar_creators(handle: str, platform: str = 'instagram',
+                            followers_min=None, followers_max=None,
+                            location=None, client_id=None) -> dict:
+    """Find creators similar to a given handle."""
+    user_id = get_client_owner_user_id(client_id)
+    jwt = get_user_jwt(user_id)
+
+    body = {
+        'handle': handle,
+        'platform': platform,
+        'followers': {'min': followers_min, 'max': followers_max},
+    }
+    if location:
+        body['location'] = location
+
+    req = urllib.request.Request(
+        f'{BACKEND_URL}/api/v1/creator-search/similar',
+        data=json.dumps(body).encode(),
+        method='POST',
+        headers={
+            'Authorization': f'Bearer {jwt}',
+            'Content-Type': 'application/json'
+        }
+    )
+    with urllib.request.urlopen(req) as r:
+        return json.loads(r.read())
+```
+
+## Creator Search — Keyword
+
+Search for creators by keyword (topic, niche, description).
+
+```
+POST /api/v1/creator-search/keyword
+```
+
+**Request body:**
+```json
+{
+  "keyword": "wellness supplements UK",
+  "platform": "instagram",
+  "followers": {"min": null, "max": 50000},
+  "location": ["United Kingdom"]
+}
+```
+
+**Response:** Same format as similar search.
+
+```python
+def search_keyword_creators(keyword: str, platform: str = 'instagram',
+                            followers_min=None, followers_max=None,
+                            location=None, client_id=None) -> dict:
+    """Search for creators by keyword."""
+    user_id = get_client_owner_user_id(client_id)
+    jwt = get_user_jwt(user_id)
+
+    body = {
+        'keyword': keyword,
+        'platform': platform,
+        'followers': {'min': followers_min, 'max': followers_max},
+    }
+    if location:
+        body['location'] = location
+
+    req = urllib.request.Request(
+        f'{BACKEND_URL}/api/v1/creator-search/keyword',
+        data=json.dumps(body).encode(),
+        method='POST',
+        headers={
+            'Authorization': f'Bearer {jwt}',
+            'Content-Type': 'application/json'
+        }
+    )
+    with urllib.request.urlopen(req) as r:
+        return json.loads(r.read())
+```
+
+## Create a List
+
+Create a new creator list for organizing search results.
+
+```
+POST /api/v1/lists/
+```
+
+**Request body:**
+```json
+{"title": "UK Wellness Micro-Influencers"}
+```
+
+**Response:**
+```json
+{
+  "id": "uuid",
+  "user_id": "uuid",
+  "title": "UK Wellness Micro-Influencers",
+  "created_at": "2026-03-08T12:00:00Z",
+  "updated_at": "2026-03-08T12:00:00Z"
+}
+```
+
+```python
+def create_list(title: str, client_id: str) -> dict:
+    """Create a new creator list."""
+    user_id = get_client_owner_user_id(client_id)
+    jwt = get_user_jwt(user_id)
+
+    req = urllib.request.Request(
+        f'{BACKEND_URL}/api/v1/lists/',
+        data=json.dumps({'title': title}).encode(),
+        method='POST',
+        headers={
+            'Authorization': f'Bearer {jwt}',
+            'Content-Type': 'application/json'
+        }
+    )
+    with urllib.request.urlopen(req) as r:
+        return json.loads(r.read())
+```
+
+## Add Creators from Search to List
+
+Add creators (from search results) to an existing list.
+
+```
+POST /api/v1/lists/{list_id}/creators/from-search
+```
+
+**Request body:**
+```json
+{
+  "creators": [
+    {"platform": "instagram", "handle": "laurpottsx", "name": "Laura Potts", "follower_count": 22000},
+    {"platform": "instagram", "handle": "wellnesswithsophie", "name": "Sophie Taylor", "follower_count": 34200}
+  ]
+}
+```
+
+**Response:**
+```json
+{"added_count": 2, "skipped_count": 0}
+```
+
+```python
+def add_creators_to_list(list_id: str, creators: list, client_id: str) -> dict:
+    """Add creators from search results to a list."""
+    user_id = get_client_owner_user_id(client_id)
+    jwt = get_user_jwt(user_id)
+
+    req = urllib.request.Request(
+        f'{BACKEND_URL}/api/v1/lists/{list_id}/creators/from-search',
+        data=json.dumps({'creators': creators}).encode(),
+        method='POST',
+        headers={
+            'Authorization': f'Bearer {jwt}',
+            'Content-Type': 'application/json'
+        }
+    )
+    with urllib.request.urlopen(req) as r:
+        return json.loads(r.read())
+```
+
+## List All Lists
+
+```
+GET /api/v1/lists/
+```
+
+**Response:**
+```json
+{"items": [{"id": "uuid", "title": "UK Wellness Micro-Influencers", "created_at": "..."}], "total": 1}
+```
+
+```python
+def get_all_lists(client_id: str) -> dict:
+    """Get all creator lists."""
+    user_id = get_client_owner_user_id(client_id)
+    jwt = get_user_jwt(user_id)
+
+    req = urllib.request.Request(
+        f'{BACKEND_URL}/api/v1/lists/',
+        headers={
+            'Authorization': f'Bearer {jwt}',
+        }
+    )
+    with urllib.request.urlopen(req) as r:
+        return json.loads(r.read())
+```
+
+## Get Creators in a List
+
+```
+GET /api/v1/lists/{list_id}/creators
+```
+
+**Response:**
+```json
+{"items": [{"handle": "laurpottsx", "name": "Laura Potts", "follower_count": 22000, "platform": "instagram"}], "total": 2}
+```
+
+```python
+def get_list_creators(list_id: str, client_id: str) -> dict:
+    """Get all creators in a list."""
+    user_id = get_client_owner_user_id(client_id)
+    jwt = get_user_jwt(user_id)
+
+    req = urllib.request.Request(
+        f'{BACKEND_URL}/api/v1/lists/{list_id}/creators',
+        headers={
+            'Authorization': f'Bearer {jwt}',
+        }
+    )
+    with urllib.request.urlopen(req) as r:
+        return json.loads(r.read())
+```
+
+## Full Workflow Example: Search, Create List, and Add Creators
+
+Complete example: find creators similar to a handle, create a list, and add the results.
+
+```python
+import urllib.request, json, os
+
+BACKEND_URL = os.environ.get('CHEERFUL_BACKEND_URL', 'https://prd-cheerful.fly.dev')
+SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
+SERVICE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
+
+CLIENT_ID = 'your-client-id'
+
+# Step 1: Search for similar creators
+results = search_similar_creators(
+    handle='laurpottsx',
+    platform='instagram',
+    followers_max=50000,
+    location=['United Kingdom'],
+    client_id=CLIENT_ID
+)
+print(f"Found {results['total']} similar creators")
+
+# Step 2: Create a list
+new_list = create_list('UK Wellness Micro-Influencers', CLIENT_ID)
+list_id = new_list['id']
+print(f"Created list: {new_list['title']} (ID: {list_id})")
+
+# Step 3: Add search results to the list
+creators_to_add = [
+    {
+        'platform': 'instagram',
+        'handle': c['username'],
+        'name': c['full_name'],
+        'follower_count': c['follower_count']
+    }
+    for c in results['creators']
+]
+add_result = add_creators_to_list(list_id, creators_to_add, CLIENT_ID)
+print(f"Added {add_result['added_count']} creators to list (skipped {add_result['skipped_count']})")
+
+# Step 4: Verify — list creators in the list
+list_creators = get_list_creators(list_id, CLIENT_ID)
+for c in list_creators['items']:
+    print(f"  - @{c['handle']} ({c['name']}) — {c['follower_count']} followers")
+```
+
+## Error Handling for Creator Search & Lists
+
+```python
+import urllib.error
+
+try:
+    results = search_similar_creators(handle='nonexistent', client_id=CLIENT_ID)
+except urllib.error.HTTPError as e:
+    body = json.loads(e.read())
+    if e.code == 404:
+        print("Handle not found or no similar creators")
+    elif e.code == 401:
+        print("JWT expired or invalid — regenerate token")
+    elif e.code == 422:
+        print(f"Invalid request: {body.get('detail', body)}")
+    else:
+        print(f"API error {e.code}: {body}")
+```
