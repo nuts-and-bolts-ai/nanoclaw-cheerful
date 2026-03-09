@@ -70,6 +70,46 @@ ssh nanoclaw@46.225.110.16 "systemctl --user status nanoclaw"
 ssh nanoclaw@46.225.110.16 "tail -50 ~/nanoclaw/logs/nanoclaw.log"
 ```
 
+## Adding or Updating Agent Skills
+
+Skills live in `container/skills/{name}/SKILL.md`. When adding or changing skills, follow this checklist:
+
+1. **Create/edit the skill** in `container/skills/{name}/SKILL.md`
+   - Must have YAML frontmatter: `name` and `description` (see existing skills for format)
+   - Description must be specific enough that the agent picks this skill over alternatives (scrapling, browser, etc.)
+   - If the skill uses env vars via Bash/Python, those vars must be in `BASH_VISIBLE_SECRETS` in `container/agent-runner/src/index.ts`
+
+2. **Determine what needs rebuilding**
+   - Skills only (SKILL.md changes): no container rebuild needed — skills sync at runtime
+   - Agent-runner changes (`container/agent-runner/`): container rebuild required (`./container/build.sh`)
+   - Host code changes (`src/`): `npm run build` required
+
+3. **Deploy with verification**
+   ```bash
+   git push origin main
+   # If agent-runner changed:
+   ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw && git pull && ./container/build.sh && npm run build && systemctl --user restart nanoclaw"
+   # Otherwise:
+   ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw && git pull && npm run build && systemctl --user restart nanoclaw"
+   ```
+
+4. **Kill stale containers and clear sessions** — critical for skill changes to take effect
+   ```bash
+   ssh nanoclaw@46.225.110.16 "docker ps --format '{{.Names}}' | grep nanoclaw | xargs -r docker kill"
+   ssh nanoclaw@46.225.110.16 "sqlite3 ~/nanoclaw/store/messages.db 'DELETE FROM sessions'"
+   ssh nanoclaw@46.225.110.16 "systemctl --user restart nanoclaw"
+   ```
+   The session-clear code in `container-runner.ts` handles this automatically on skill hash changes, but stale containers from before the restart can write old sessions back. Always kill containers first.
+
+5. **Verify after deploy** — don't trust "it restarted" as proof
+   ```bash
+   # Trigger a test message, then:
+   ssh nanoclaw@46.225.110.16 "docker ps --format '{{.Names}} {{.Status}}' | grep nanoclaw"
+   ssh nanoclaw@46.225.110.16 "docker logs <container-name> 2>&1 | head -20"  # Should show "session: new"
+   # Wait for completion, then check it used the right approach:
+   ssh nanoclaw@46.225.110.16 "docker logs <container-name> 2>&1 | tail -20"
+   ```
+
 ## Troubleshooting
 
 **WhatsApp not connecting after upgrade:** WhatsApp is now a separate skill, not bundled in core. Run `/add-whatsapp` (or `npx tsx scripts/apply-skill.ts .claude/skills/add-whatsapp && npm run build`) to install it. Existing auth credentials and groups are preserved.
