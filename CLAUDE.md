@@ -15,17 +15,21 @@ NanoClaw runs on a **Hetzner VPS** (CX23, Ubuntu 24.04, eu-central):
 The local repo on the laptop is for development only. To deploy changes:
 ```bash
 git push origin main
+ssh nanoclaw@46.225.110.16 "docker ps --format '{{.Names}}' | grep nanoclaw | xargs -r docker kill"
 ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw && git pull && npm run build && systemctl --user restart nanoclaw"
 ```
 
 If the container image changed (Dockerfile, agent-runner, or skills that need rebuild):
 ```bash
+ssh nanoclaw@46.225.110.16 "docker ps --format '{{.Names}}' | grep nanoclaw | xargs -r docker kill"
 ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw && git pull && ./container/build.sh && npm run build && systemctl --user restart nanoclaw"
 ```
 
+**Always kill stale containers before restarting.** Old containers keep running with old code and can send duplicate/outdated responses.
+
 ## Quick Context
 
-Single Node.js process with skill-based channel system. Channels (WhatsApp, Telegram, Slack, Discord, Gmail) are skills that self-register at startup. Messages route to Claude Agent SDK running in containers (Linux VMs). Each group has isolated filesystem and memory.
+Single Node.js process with skill-based channel system. Channels (Slack, Telegram, Discord, Gmail) are skills that self-register at startup. Messages route to Claude Agent SDK running in containers (Linux VMs). Each group has isolated filesystem and memory.
 
 ## Key Files
 
