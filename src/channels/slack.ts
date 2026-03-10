@@ -257,8 +257,9 @@ export class SlackChannel implements Channel {
     }
 
     try {
-      // Use explicitly passed threadTs (concurrent sessions), fall back to tracked target
-      const thread_ts = threadTs ?? this.threadTargets.get(jid);
+      // Only thread when explicitly requested — no fallback to threadTargets.
+      // threadTargets is used for auto-trigger tracking, not for routing outbound messages.
+      const thread_ts = threadTs;
 
       // Slack limits messages to ~4000 characters; split if needed
       if (text.length <= MAX_MESSAGE_LENGTH) {
