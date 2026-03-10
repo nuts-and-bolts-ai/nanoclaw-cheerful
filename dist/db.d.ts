@@ -54,7 +54,7 @@ export declare function getNewMessages(jids: string[], lastTimestamp: string, bo
     messages: NewMessage[];
     newTimestamp: string;
 };
-export declare function getMessagesSince(chatJid: string, sinceTimestamp: string, botPrefix: string): NewMessage[];
+export declare function getMessagesSince(chatJid: string, sinceTimestamp: string, botPrefix: string, threadTs?: string): NewMessage[];
 export declare function createTask(task: Omit<ScheduledTask, 'last_run' | 'last_result'>): void;
 export declare function getTaskById(id: string): ScheduledTask | undefined;
 export declare function getTasksForGroup(groupFolder: string): ScheduledTask[];

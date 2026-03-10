@@ -351,7 +351,7 @@ export function getNewMessages(
   // Filter bot messages using both the is_bot_message flag AND the content
   // prefix as a backstop for messages written before the migration ran.
   const sql = `
-    SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me
+    SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, thread_ts
     FROM messages
     WHERE timestamp > ? AND chat_jid IN (${placeholders})
       AND is_bot_message = 0 AND content NOT LIKE ?
@@ -361,34 +361,46 @@ export function getNewMessages(
 
   const rows = db
     .prepare(sql)
-    .all(lastTimestamp, ...jids, `${botPrefix}:%`) as NewMessage[];
+    .all(lastTimestamp, ...jids, `${botPrefix}:%`) as Array<
+    NewMessage & { thread_ts: string | null }
+  >;
+
+  const messages = rows.map((row) => ({
+    ...row,
+    thread_ts: row.thread_ts || undefined,
+  }));
 
   let newTimestamp = lastTimestamp;
-  for (const row of rows) {
+  for (const row of messages) {
     if (row.timestamp > newTimestamp) newTimestamp = row.timestamp;
   }
 
-  return { messages: rows, newTimestamp };
+  return { messages, newTimestamp };
 }
 
 export function getMessagesSince(
   chatJid: string,
   sinceTimestamp: string,
   botPrefix: string,
+  threadTs?: string,
 ): NewMessage[] {
   // Filter bot messages using both the is_bot_message flag AND the content
   // prefix as a backstop for messages written before the migration ran.
+  const threadFilter = threadTs !== undefined ? ' AND thread_ts = ?' : '';
   const sql = `
     SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, thread_ts
     FROM messages
     WHERE chat_jid = ? AND timestamp > ?
       AND is_bot_message = 0 AND content NOT LIKE ?
-      AND content != '' AND content IS NOT NULL
+      AND content != '' AND content IS NOT NULL${threadFilter}
     ORDER BY timestamp
   `;
+  const params: (string | number)[] = [chatJid, sinceTimestamp, `${botPrefix}:%`];
+  if (threadTs !== undefined) params.push(threadTs);
+
   const rows = db
     .prepare(sql)
-    .all(chatJid, sinceTimestamp, `${botPrefix}:%`) as Array<
+    .all(...params) as Array<
     NewMessage & { thread_ts: string | null }
   >;
   return rows.map((row) => ({

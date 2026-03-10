@@ -19,7 +19,7 @@ export declare class SlackChannel implements Channel {
     constructor(opts: SlackChannelOpts);
     private setupEventHandlers;
     connect(): Promise<void>;
-    sendMessage(jid: string, text: string): Promise<void>;
+    sendMessage(jid: string, text: string, threadTs?: string): Promise<void>;
     isConnected(): boolean;
     ownsJid(jid: string): boolean;
     disconnect(): Promise<void>;

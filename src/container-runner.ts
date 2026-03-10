@@ -17,7 +17,7 @@ import {
   TIMEZONE,
 } from './config.js';
 import { readEnvFile } from './env.js';
-import { resolveGroupFolderPath, resolveGroupIpcPath } from './group-folder.js';
+import { resolveGroupFolderPath, resolveGroupIpcPath, resolveThreadGroupPath, resolveThreadIpcPath } from './group-folder.js';
 import { logger } from './logger.js';
 import {
   CONTAINER_RUNTIME_BIN,
@@ -42,6 +42,7 @@ export interface ContainerInput {
   assistantName?: string;
   secrets?: Record<string, string>;
   bashSecrets?: string[]; // Secret keys to expose to Bash subprocesses
+  threadTs?: string; // Slack thread parent timestamp — when set, container uses thread-scoped mounts
 }
 
 export interface ContainerOutput {
@@ -81,11 +82,16 @@ function hashDirectory(dirPath: string): string {
 function buildVolumeMounts(
   group: RegisteredGroup,
   isMain: boolean,
+  threadTs?: string,
 ): { mounts: VolumeMount[]; skillsChanged: boolean } {
   const mounts: VolumeMount[] = [];
   let skillsChanged = false;
   const projectRoot = process.cwd();
   const groupDir = resolveGroupFolderPath(group.folder);
+
+  // Thread-scoped directories (when processing a specific Slack thread)
+  const threadGroupDir = threadTs ? resolveThreadGroupPath(group.folder, threadTs) : null;
+  const threadIpcDir = threadTs ? resolveThreadIpcPath(group.folder, threadTs) : null;
 
   if (isMain) {
     // Main gets the project root read-only. Writable paths the agent needs
@@ -117,12 +123,27 @@ function buildVolumeMounts(
       readonly: false,
     });
   } else {
-    // Other groups only get their own folder
-    mounts.push({
-      hostPath: groupDir,
-      containerPath: '/workspace/group',
-      readonly: false,
-    });
+    if (threadGroupDir) {
+      // Thread session: isolated write dir + shared group knowledge
+      fs.mkdirSync(threadGroupDir, { recursive: true });
+      mounts.push({
+        hostPath: threadGroupDir,
+        containerPath: '/workspace/group',
+        readonly: false,
+      });
+      mounts.push({
+        hostPath: groupDir,
+        containerPath: '/workspace/extra/group-shared',
+        readonly: true,
+      });
+    } else {
+      // Non-threaded: group folder is the working directory
+      mounts.push({
+        hostPath: groupDir,
+        containerPath: '/workspace/group',
+        readonly: false,
+      });
+    }
 
     // Global memory directory (read-only for non-main)
     // Only directory mounts are supported, not file mounts
@@ -145,7 +166,16 @@ function buildVolumeMounts(
     '.claude',
   );
   fs.mkdirSync(groupSessionsDir, { recursive: true });
-  const settingsFile = path.join(groupSessionsDir, 'settings.json');
+
+  // For thread sessions, use thread-scoped sessions directory
+  const effectiveSessionsDir = threadTs
+    ? path.join(DATA_DIR, 'sessions', group.folder, 'threads', threadTs, '.claude')
+    : groupSessionsDir;
+  if (threadTs) {
+    fs.mkdirSync(effectiveSessionsDir, { recursive: true });
+  }
+
+  const settingsFile = path.join(effectiveSessionsDir, 'settings.json');
   if (!fs.existsSync(settingsFile)) {
     fs.writeFileSync(
       settingsFile,
@@ -205,20 +235,27 @@ function buildVolumeMounts(
       skillsChanged = true;
     }
   }
+
+  // For thread sessions, copy skills into the thread sessions dir too
+  if (threadTs && fs.existsSync(path.join(groupSessionsDir, 'skills'))) {
+    const threadSkillsDst = path.join(effectiveSessionsDir, 'skills');
+    fs.cpSync(path.join(groupSessionsDir, 'skills'), threadSkillsDst, { recursive: true });
+  }
+
   mounts.push({
-    hostPath: groupSessionsDir,
+    hostPath: effectiveSessionsDir,
     containerPath: '/home/node/.claude',
     readonly: false,
   });
 
   // Per-group IPC namespace: each group gets its own IPC directory
   // This prevents cross-group privilege escalation via IPC
-  const groupIpcDir = resolveGroupIpcPath(group.folder);
-  fs.mkdirSync(path.join(groupIpcDir, 'messages'), { recursive: true });
-  fs.mkdirSync(path.join(groupIpcDir, 'tasks'), { recursive: true });
-  fs.mkdirSync(path.join(groupIpcDir, 'input'), { recursive: true });
+  const effectiveIpcDir = threadIpcDir || resolveGroupIpcPath(group.folder);
+  fs.mkdirSync(path.join(effectiveIpcDir, 'messages'), { recursive: true });
+  fs.mkdirSync(path.join(effectiveIpcDir, 'tasks'), { recursive: true });
+  fs.mkdirSync(path.join(effectiveIpcDir, 'input'), { recursive: true });
   mounts.push({
-    hostPath: groupIpcDir,
+    hostPath: effectiveIpcDir,
     containerPath: '/workspace/ipc',
     readonly: false,
   });
@@ -336,7 +373,7 @@ export async function runContainerAgent(
   const groupDir = resolveGroupFolderPath(group.folder);
   fs.mkdirSync(groupDir, { recursive: true });
 
-  const { mounts, skillsChanged } = buildVolumeMounts(group, input.isMain);
+  const { mounts, skillsChanged } = buildVolumeMounts(group, input.isMain, input.threadTs);
   if (skillsChanged) {
     input.sessionId = undefined;
   }

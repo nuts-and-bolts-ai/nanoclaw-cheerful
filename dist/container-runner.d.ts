@@ -14,6 +14,7 @@ export interface ContainerInput {
     assistantName?: string;
     secrets?: Record<string, string>;
     bashSecrets?: string[];
+    threadTs?: string;
 }
 export interface ContainerOutput {
     status: 'success' | 'error';

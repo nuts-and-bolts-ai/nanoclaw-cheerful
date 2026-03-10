@@ -178,7 +178,7 @@ export class WhatsAppChannel {
             }
         });
     }
-    async sendMessage(jid, text) {
+    async sendMessage(jid, text, _threadTs) {
         // Prefix bot messages with assistant name so users know who's speaking.
         // On a shared number, prefix is also needed in DMs (including self-chat)
         // to distinguish bot output from user messages.

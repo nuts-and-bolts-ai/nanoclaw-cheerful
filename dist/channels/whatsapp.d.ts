@@ -16,7 +16,7 @@ export declare class WhatsAppChannel implements Channel {
     constructor(opts: WhatsAppChannelOpts);
     connect(): Promise<void>;
     private connectInternal;
-    sendMessage(jid: string, text: string): Promise<void>;
+    sendMessage(jid: string, text: string, _threadTs?: string): Promise<void>;
     isConnected(): boolean;
     ownsJid(jid: string): boolean;
     disconnect(): Promise<void>;
