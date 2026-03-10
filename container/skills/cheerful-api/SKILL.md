@@ -1,11 +1,11 @@
 ---
 name: cheerful-api
-description: Call the Cheerful backend API for Shopify order creation and workflow triggers. Use when the user asks to create gifting orders or trigger backend workflows. For creator search and list management, use the creator-search skill instead.
+description: Call the Cheerful backend API for Shopify order creation, outbound outreach, and workflow triggers. Use when the user asks to create gifting orders, add creators to campaigns for outreach, or trigger backend workflows. For creator search and list management, use the creator-search skill instead.
 ---
 
 # Cheerful — Backend API
 
-Use this skill for operations that must go through the Cheerful backend (order creation, workflow triggers). These endpoints enforce business logic and Shopify integration that should not be bypassed via direct DB writes.
+Use this skill for operations that must go through the Cheerful backend (order creation, outbound outreach, workflow triggers). These endpoints enforce business logic, queue population, and Shopify integration that should not be bypassed via direct DB writes.
 
 ## Setup (once per session)
 
@@ -184,4 +184,168 @@ execution['output_data']['shipping_address'] = addr
 supabase_patch('campaign_workflow_execution', f'id=eq.{execution_id}',
     {'output_data': execution['output_data']})
 ```
+
+## Outreach — Add Creators to Campaign
+
+Use these functions to add creators to an existing active campaign. The backend automatically personalizes emails from the campaign's templates, populates the outbound queue (round-robin across configured senders), and sends via the Temporal worker. You do not need to trigger sending — it happens automatically.
+
+### List Active Campaigns
+
+Find active campaigns to resolve names to IDs. Uses Supabase directly (no JWT needed).
+
+```python
+def list_active_campaigns() -> list:
+    """Return active campaigns scoped to CLIENT_IDS."""
+    client_ids = os.environ.get('CLIENT_IDS', '')
+    url = f"{SUPABASE_URL}/rest/v1/campaign?status=eq.ACTIVE&user_id=in.({client_ids})&select=id,name,created_at&order=created_at.desc"
+    req = urllib.request.Request(url, headers={
+        'apikey': SERVICE_KEY,
+        'Authorization': f'Bearer {SERVICE_KEY}',
+    })
+    with urllib.request.urlopen(req) as r:
+        return json.loads(r.read())
+
+# Example: find campaign by name
+campaigns = list_active_campaigns()
+for c in campaigns:
+    print(f"{c['name']} — {c['id']}")
+```
+
+### Add Recipients by Email
+
+Use when you have the creator's email address. Creates `CampaignRecipient` records and populates the outbound queue.
+
+```python
+def add_recipients_to_campaign(campaign_id: str, recipients: list, user_email: str) -> list:
+    """Add recipients to a campaign by email. Triggers outbound queue population.
+
+    recipients: list of dicts with keys:
+        - email (required): creator's email address
+        - name (optional): creator's name
+        - custom_fields (optional): dict of personalization fields for email templates
+    """
+    jwt = get_user_jwt(user_email)
+    url = f"{BACKEND_URL}/api/v1/campaigns/{campaign_id}/recipients"
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(recipients).encode(),
+        method='POST',
+        headers={
+            'Authorization': f'Bearer {jwt}',
+            'Content-Type': 'application/json'
+        }
+    )
+    with urllib.request.urlopen(req) as r:
+        return json.loads(r.read())
+
+# Example: add a single creator
+result = add_recipients_to_campaign(
+    campaign_id='a1b2c3d4-...',
+    recipients=[
+        {'email': 'creator@example.com', 'name': 'Jane Smith', 'custom_fields': {'brand': 'Acme'}}
+    ],
+    user_email='dan.stevenson@spacegoods.com'
+)
+print(f"Added {len(result)} recipients — emails will be sent automatically")
+```
+
+**Success response (HTTP 201):** Returns list of newly created recipients (duplicates are skipped silently):
+```json
+[
+  {
+    "id": "uuid",
+    "campaign_id": "uuid",
+    "email": "creator@example.com",
+    "name": "Jane Smith",
+    "custom_fields": {"brand": "Acme"},
+    "created_at": "2026-03-09T..."
+  }
+]
+```
+
+### Add Creators from Search Results
+
+Use when you have social media handles (from the creator-search skill). Creates both `CampaignRecipient` (for email queue) and `CampaignCreator` (for social metadata). Creators without email are queued for enrichment automatically.
+
+```python
+def add_creators_from_search(campaign_id: str, creators: list, user_email: str) -> list:
+    """Add creators from search results to a campaign. Triggers outbound queue population.
+
+    creators: list of dicts with keys:
+        - email (optional): creator's email address
+        - name (optional): creator's name
+        - social_media_handles (required): list of {platform, handle, url (optional)}
+        - custom_fields (optional): dict of personalization fields
+    """
+    jwt = get_user_jwt(user_email)
+    url = f"{BACKEND_URL}/api/v1/campaigns/{campaign_id}/recipients-from-search"
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(creators).encode(),
+        method='POST',
+        headers={
+            'Authorization': f'Bearer {jwt}',
+            'Content-Type': 'application/json'
+        }
+    )
+    with urllib.request.urlopen(req) as r:
+        return json.loads(r.read())
+
+# Example: add creators from search with social handles
+result = add_creators_from_search(
+    campaign_id='a1b2c3d4-...',
+    creators=[
+        {
+            'email': 'creator@example.com',
+            'name': 'Jane Smith',
+            'social_media_handles': [
+                {'platform': 'instagram', 'handle': 'janesmith', 'url': 'https://instagram.com/janesmith'}
+            ],
+            'custom_fields': {'brand': 'Acme'}
+        },
+        {
+            'name': 'No Email Creator',
+            'social_media_handles': [
+                {'platform': 'tiktok', 'handle': 'noemail', 'url': 'https://tiktok.com/@noemail'}
+            ]
+        }
+    ],
+    user_email='dan.stevenson@spacegoods.com'
+)
+for r in result:
+    status = 'queued for outreach' if r['queue_populated'] else 'pending email enrichment'
+    if r['already_existed']:
+        status = 'already in campaign'
+    print(f"Creator {r['creator_id']}: {status}")
+```
+
+**Success response (HTTP 201):**
+```json
+[
+  {
+    "recipient_id": "uuid",
+    "creator_id": "uuid",
+    "email": "creator@example.com",
+    "name": "Jane Smith",
+    "queue_populated": true,
+    "already_existed": false
+  },
+  {
+    "recipient_id": null,
+    "creator_id": "uuid",
+    "email": null,
+    "name": "No Email Creator",
+    "queue_populated": false,
+    "already_existed": false
+  }
+]
+```
+
+### Outreach Error Handling
+
+Same pattern as order creation errors. Key cases:
+
+- **404:** Campaign not found
+- **422:** Validation error — campaign not active, invalid email format, or empty recipients list
+- **401:** JWT expired — regenerate with `get_user_jwt()`
 
