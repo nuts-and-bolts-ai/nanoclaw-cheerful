@@ -527,6 +527,7 @@ async function main(): Promise<void> {
   const DEFAULT_BASH_SECRETS = [
     'LINEAR_API_KEY', 'SLACK_BOT_TOKEN',
     'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'CHEERFUL_BACKEND_URL',
+    'ROLLBAR_READ_TOKEN',
   ];
   const bashVisibleSecrets = new Set([
     ...DEFAULT_BASH_SECRETS,
