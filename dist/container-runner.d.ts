@@ -13,6 +13,7 @@ export interface ContainerInput {
     isScheduledTask?: boolean;
     assistantName?: string;
     secrets?: Record<string, string>;
+    bashSecrets?: string[];
 }
 export interface ContainerOutput {
     status: 'success' | 'error';

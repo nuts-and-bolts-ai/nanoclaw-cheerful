@@ -21,6 +21,9 @@ export interface AllowedRoot {
 export interface ContainerConfig {
     additionalMounts?: AdditionalMount[];
     timeout?: number;
+    model?: string;
+    secrets?: string[];
+    bashSecrets?: string[];
 }
 export interface RegisteredGroup {
     name: string;

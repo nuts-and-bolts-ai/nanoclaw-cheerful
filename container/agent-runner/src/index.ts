@@ -28,6 +28,7 @@ interface ContainerInput {
   isScheduledTask?: boolean;
   assistantName?: string;
   secrets?: Record<string, string>;
+  bashSecrets?: string[]; // Secret keys to expose to Bash subprocesses
 }
 
 interface ContainerOutput {
@@ -521,17 +522,25 @@ async function main(): Promise<void> {
 
   // Build SDK env: merge secrets into process.env for the SDK only.
   // Secrets never touch process.env itself, so Bash subprocesses can't see them.
-  // Exception: GITHUB_TOKEN is exposed to process.env so gh CLI and git can use it.
-  const BASH_VISIBLE_SECRETS = [
-    'GITHUB_TOKEN', 'LINEAR_API_KEY', 'SLACK_BOT_TOKEN',
+  // Exception: keys listed in bashVisibleSecrets are exposed to process.env
+  // so CLI tools (gh, git, etc.) can use them.
+  const DEFAULT_BASH_SECRETS = [
+    'LINEAR_API_KEY', 'SLACK_BOT_TOKEN',
     'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'CHEERFUL_BACKEND_URL',
   ];
+  const bashVisibleSecrets = new Set([
+    ...DEFAULT_BASH_SECRETS,
+    ...(containerInput.bashSecrets || []),
+  ]);
   const sdkEnv: Record<string, string | undefined> = { ...process.env };
   for (const [key, value] of Object.entries(containerInput.secrets || {})) {
     sdkEnv[key] = value;
-    if (BASH_VISIBLE_SECRETS.includes(key) && value) {
+    if (bashVisibleSecrets.has(key) && value) {
       process.env[key] = value;
-      process.env['GH_TOKEN'] = value; // gh CLI uses GH_TOKEN
+      // Expose GitHub tokens to gh CLI (which reads GH_TOKEN)
+      if (key.startsWith('GITHUB_TOKEN')) {
+        process.env['GH_TOKEN'] = value;
+      }
     }
   }
 

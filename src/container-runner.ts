@@ -41,6 +41,7 @@ export interface ContainerInput {
   isScheduledTask?: boolean;
   assistantName?: string;
   secrets?: Record<string, string>;
+  bashSecrets?: string[]; // Secret keys to expose to Bash subprocesses
 }
 
 export interface ContainerOutput {
@@ -262,44 +263,32 @@ function buildVolumeMounts(
 /**
  * Read allowed secrets from .env for passing to the container via stdin.
  * Secrets are never written to disk or mounted as files.
+ * @param extraKeys Additional .env keys to include (from group containerConfig.secrets)
  */
-function readSecrets(): Record<string, string> {
-  return readEnvFile([
+function readSecrets(extraKeys?: string[]): Record<string, string> {
+  const baseKeys = [
     'CLAUDE_CODE_OAUTH_TOKEN',
     'ANTHROPIC_API_KEY',
     'ANTHROPIC_BASE_URL',
     'ANTHROPIC_AUTH_TOKEN',
-    'GITHUB_TOKEN',
     // Linear API
     'LINEAR_API_KEY',
     // Slack API (for on-demand channel reads/writes)
     'SLACK_BOT_TOKEN',
-    // Supabase (one token per account)
-    'SUPABASE_ACCESS_TOKEN_MAIN', // cheerful, nutsandbolts, flixr, personal projects
-    'SUPABASE_ACCESS_TOKEN_CGC', // Challenger Gray
-    // QuickBooks Online (shared app + per-company tokens)
-    'QUICKBOOKS_CLIENT_ID',
-    'QUICKBOOKS_CLIENT_SECRET',
-    'QUICKBOOKS_ENVIRONMENT',
-    'QUICKBOOKS_REFRESH_TOKEN_NUTSANDBOLTS',
-    'QUICKBOOKS_REALM_ID_NUTSANDBOLTS',
-    'QUICKBOOKS_REFRESH_TOKEN_BROWNRIDGES',
-    'QUICKBOOKS_REALM_ID_BROWNRIDGES',
-    'QUICKBOOKS_REFRESH_TOKEN_FLIXR',
-    'QUICKBOOKS_REALM_ID_FLIXR',
-    // Sentry (one token per org)
+    // Error tracking
     'SENTRY_AUTH_TOKEN_CHEERFUL',
-    'SENTRY_AUTH_TOKEN_CGC',
     // Cheerful backend (Supabase + API)
     'SUPABASE_URL',
     'SUPABASE_SERVICE_ROLE_KEY',
     'CHEERFUL_BACKEND_URL',
-  ]);
+  ];
+  return readEnvFile([...baseKeys, ...(extraKeys || [])]);
 }
 
 function buildContainerArgs(
   mounts: VolumeMount[],
   containerName: string,
+  modelOverride?: string,
 ): string[] {
   const args: string[] = ['run', '-i', '--rm', '--name', containerName];
 
@@ -308,7 +297,8 @@ function buildContainerArgs(
 
   // Set model via env var — settings.json gets overwritten by Claude Code on startup
   // ANTHROPIC_MODEL takes priority over settings file
-  args.push('-e', 'ANTHROPIC_MODEL=claude-sonnet-4-6');
+  const model = modelOverride || 'claude-sonnet-4-6';
+  args.push('-e', `ANTHROPIC_MODEL=${model}`);
   // Also pin the default sonnet alias to 4.6 explicitly
   args.push('-e', 'ANTHROPIC_DEFAULT_SONNET_MODEL=claude-sonnet-4-6');
 
@@ -352,7 +342,7 @@ export async function runContainerAgent(
   }
   const safeName = group.folder.replace(/[^a-zA-Z0-9-]/g, '-');
   const containerName = `nanoclaw-${safeName}-${Date.now()}`;
-  const containerArgs = buildContainerArgs(mounts, containerName);
+  const containerArgs = buildContainerArgs(mounts, containerName, group.containerConfig?.model);
 
   logger.debug(
     {
@@ -393,11 +383,13 @@ export async function runContainerAgent(
     let stderrTruncated = false;
 
     // Pass secrets via stdin (never written to disk or mounted as files)
-    input.secrets = readSecrets();
+    input.secrets = readSecrets(group.containerConfig?.secrets);
+    input.bashSecrets = group.containerConfig?.bashSecrets;
     container.stdin.write(JSON.stringify(input));
     container.stdin.end();
     // Remove secrets from input so they don't appear in logs
     delete input.secrets;
+    delete input.bashSecrets;
 
     // Streaming output: parse OUTPUT_START/END marker pairs as they arrive
     let parseBuffer = '';

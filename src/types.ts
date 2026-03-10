@@ -30,6 +30,9 @@ export interface AllowedRoot {
 export interface ContainerConfig {
   additionalMounts?: AdditionalMount[];
   timeout?: number; // Default: 300000 (5 minutes)
+  model?: string; // Override model for this group (e.g., 'claude-opus-4-6'). Default: 'claude-sonnet-4-6'
+  secrets?: string[]; // Additional .env keys to inject into this group's container (beyond the base set)
+  bashSecrets?: string[]; // Secret keys to expose to Bash subprocesses (e.g., ['GITHUB_TOKEN'])
 }
 
 export interface RegisteredGroup {
