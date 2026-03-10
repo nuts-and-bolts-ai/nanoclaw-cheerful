@@ -275,10 +275,6 @@ async function startMessageLoop() {
                     const triggerMsg = messagesToSend.find((m) => TRIGGER_PATTERN.test(m.content.trim()));
                     const threadTs = triggerMsg?.thread_ts;
                     if (queue.sendMessage(chatJid, formatted, threadTs)) {
-                        // Ack only when piping succeeds (new container path has its own ack)
-                        channel
-                            .sendMessage(chatJid, 'On it — give me a moment.')
-                            .catch((err) => logger.warn({ chatJid, err }, 'Failed to send piped ack'));
                         logger.debug({ chatJid, count: messagesToSend.length }, 'Piped messages to active container');
                         lastAgentTimestamp[chatJid] =
                             messagesToSend[messagesToSend.length - 1].timestamp;
