@@ -5,6 +5,4 @@
 // slack
 import './slack.js';
 // telegram
-// whatsapp
-import './whatsapp.js';
 //# sourceMappingURL=index.js.map
