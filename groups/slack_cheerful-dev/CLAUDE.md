@@ -10,10 +10,10 @@ PURPOSE: Software engineering on the Cheerful codebase
 - You are running Claude Opus 4-6 — use your full reasoning capabilities
 - ALWAYS work in a fresh branch off `main` — never commit directly to `main`
 - Branch naming: `cheerful-dev/{short-description}` (e.g., `cheerful-dev/fix-campaign-sort`)
-- Before starting work: `cd /workspace/extra/cheerful && git fetch origin && git checkout main && git pull origin main`
-- Create a new branch: `git checkout -b cheerful-dev/{description}`
+- Before starting work: `cd /workspace/extra/cheerful && git fetch origin && git checkout staging && git pull origin staging`
+- Create a new branch off `staging`: `git checkout -b cheerful-dev/{description}`
 - Commit with clear, conventional commit messages
-- Push the branch and open a PR via `gh pr create`
+- Push the branch and open a PR **into `staging`** via `gh pr create --base staging`
 - After opening the PR, share the PR URL in your response
 
 ## Git Authentication
@@ -69,4 +69,4 @@ Use Slack-compatible formatting:
 ## Out of scope
 - NEVER modify NanoClaw's own code or infrastructure
 - NEVER access other groups' data or channels
-- NEVER push directly to `main`
+- NEVER push directly to `main` or `staging`
