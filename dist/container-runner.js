@@ -185,6 +185,20 @@ function buildVolumeMounts(group, isMain, threadTs) {
     fs.mkdirSync(path.join(effectiveIpcDir, 'messages'), { recursive: true });
     fs.mkdirSync(path.join(effectiveIpcDir, 'tasks'), { recursive: true });
     fs.mkdirSync(path.join(effectiveIpcDir, 'input'), { recursive: true });
+    // When running in a thread context, copy snapshots from the group's IPC dir
+    // into the thread's IPC dir so the container can see current_tasks.json and
+    // available_groups.json. Without this, list_tasks always returns empty for
+    // threaded messages (e.g. all Slack replies).
+    if (threadIpcDir) {
+        const groupIpcDir = resolveGroupIpcPath(group.folder);
+        for (const snapshot of ['current_tasks.json', 'available_groups.json']) {
+            const src = path.join(groupIpcDir, snapshot);
+            const dst = path.join(threadIpcDir, snapshot);
+            if (fs.existsSync(src)) {
+                fs.copyFileSync(src, dst);
+            }
+        }
+    }
     mounts.push({
         hostPath: effectiveIpcDir,
         containerPath: '/workspace/ipc',
