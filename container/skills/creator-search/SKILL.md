@@ -151,7 +151,7 @@ def create_list(title: str) -> dict:
 After creating a list, always share the link with the user:
 ```python
 list_id = new_list['id']
-print(f"List created: https://app.cheerful.ai/{list_id}")
+print(f"List created: https://app.cheerful.ai/list/{list_id}")
 ```
 
 ## Add Creators from Search to List
