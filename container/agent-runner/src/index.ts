@@ -407,6 +407,24 @@ async function runQuery(
   let globalClaudeMd: string | undefined;
   if (!containerInput.isMain && fs.existsSync(globalClaudeMdPath)) {
     globalClaudeMd = fs.readFileSync(globalClaudeMdPath, 'utf-8');
+
+    // Conditionally load client-facing restrictions based on group SCOPE.
+    // Groups with SCOPE: client or SCOPE: global get the client-facing persona.
+    // Groups with SCOPE: isolated (e.g. engineering) do not.
+    const groupClaudeMdPath = '/workspace/group/CLAUDE.md';
+    const clientFacingPath = '/workspace/global/client-facing.md';
+    if (fs.existsSync(groupClaudeMdPath) && fs.existsSync(clientFacingPath)) {
+      const groupClaudeMd = fs.readFileSync(groupClaudeMdPath, 'utf-8');
+      const scopeMatch = groupClaudeMd.match(/^SCOPE:\s*(client|global|isolated)\s*$/m);
+      const scope = scopeMatch ? scopeMatch[1] : undefined;
+      if (scope === 'client' || scope === 'global') {
+        const clientFacing = fs.readFileSync(clientFacingPath, 'utf-8');
+        globalClaudeMd = globalClaudeMd + '\n\n' + clientFacing;
+        log(`Loaded client-facing.md for scope: ${scope}`);
+      } else {
+        log(`Skipped client-facing.md (scope: ${scope || 'unknown'})`);
+      }
+    }
   }
 
   // Discover additional directories mounted at /workspace/extra/*
