@@ -131,8 +131,11 @@ SCHEDULE VALUE FORMAT (all times are LOCAL timezone):
     // Non-main groups can only schedule for themselves
     const targetJid = isMain && args.target_group_jid ? args.target_group_jid : chatJid;
 
+    const taskId = `task-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
     const data = {
       type: 'schedule_task',
+      taskId,
       prompt: args.prompt,
       schedule_type: args.schedule_type,
       schedule_value: args.schedule_value,
@@ -142,10 +145,10 @@ SCHEDULE VALUE FORMAT (all times are LOCAL timezone):
       timestamp: new Date().toISOString(),
     };
 
-    const filename = writeIpcFile(TASKS_DIR, data);
+    writeIpcFile(TASKS_DIR, data);
 
     return {
-      content: [{ type: 'text' as const, text: `Task scheduled (${filename}): ${args.schedule_type} - ${args.schedule_value}` }],
+      content: [{ type: 'text' as const, text: `Task scheduled. ID: ${taskId} (${args.schedule_type}: ${args.schedule_value})` }],
     };
   },
 );
@@ -242,6 +245,65 @@ server.tool(
     writeIpcFile(TASKS_DIR, data);
 
     return { content: [{ type: 'text' as const, text: `Task ${args.task_id} cancellation requested.` }] };
+  },
+);
+
+server.tool(
+  'update_task',
+  'Update an existing scheduled task. Change its prompt, schedule, or both without creating a duplicate.',
+  {
+    task_id: z.string().describe('The task ID to update'),
+    prompt: z.string().optional().describe('New prompt for the task'),
+    schedule_type: z.enum(['cron', 'interval', 'once']).optional().describe('New schedule type'),
+    schedule_value: z.string().optional().describe('New schedule value'),
+  },
+  async (args) => {
+    if (!args.prompt && !args.schedule_type && !args.schedule_value) {
+      return {
+        content: [{ type: 'text' as const, text: 'Nothing to update. Provide at least one of: prompt, schedule_type, schedule_value.' }],
+        isError: true,
+      };
+    }
+
+    // Validate schedule_value if provided
+    const scheduleType = args.schedule_type;
+    const scheduleValue = args.schedule_value;
+    if (scheduleType && scheduleValue) {
+      if (scheduleType === 'cron') {
+        try {
+          CronExpressionParser.parse(scheduleValue);
+        } catch {
+          return {
+            content: [{ type: 'text' as const, text: `Invalid cron: "${scheduleValue}".` }],
+            isError: true,
+          };
+        }
+      } else if (scheduleType === 'interval') {
+        const ms = parseInt(scheduleValue, 10);
+        if (isNaN(ms) || ms <= 0) {
+          return {
+            content: [{ type: 'text' as const, text: `Invalid interval: "${scheduleValue}". Must be positive milliseconds.` }],
+            isError: true,
+          };
+        }
+      }
+    }
+
+    const data: Record<string, string | undefined> = {
+      type: 'update_task',
+      taskId: args.task_id,
+      prompt: args.prompt,
+      schedule_type: args.schedule_type,
+      schedule_value: args.schedule_value,
+      groupFolder,
+      timestamp: new Date().toISOString(),
+    };
+
+    writeIpcFile(TASKS_DIR, data);
+
+    return {
+      content: [{ type: 'text' as const, text: `Task ${args.task_id} update requested.` }],
+    };
   },
 );
 

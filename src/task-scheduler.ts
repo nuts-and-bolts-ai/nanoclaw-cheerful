@@ -190,6 +190,7 @@ async function runTask(
           scheduleClose();
         }
         if (streamedOutput.status === 'success') {
+          scheduleClose();
           deps.queue.notifyIdle(task.chat_jid);
         }
         if (streamedOutput.status === 'error') {

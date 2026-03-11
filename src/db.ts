@@ -344,24 +344,29 @@ export function getNewMessages(
   jids: string[],
   lastTimestamp: string,
   botPrefix: string,
+  limit = 200,
 ): { messages: NewMessage[]; newTimestamp: string } {
   if (jids.length === 0) return { messages: [], newTimestamp: lastTimestamp };
 
   const placeholders = jids.map(() => '?').join(',');
   // Filter bot messages using both the is_bot_message flag AND the content
   // prefix as a backstop for messages written before the migration ran.
+  // Use a DESC LIMIT subquery to cap rows, then re-sort chronologically.
   const sql = `
-    SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, thread_ts
-    FROM messages
-    WHERE timestamp > ? AND chat_jid IN (${placeholders})
-      AND is_bot_message = 0 AND content NOT LIKE ?
-      AND content != '' AND content IS NOT NULL
-    ORDER BY timestamp
+    SELECT * FROM (
+      SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, thread_ts
+      FROM messages
+      WHERE timestamp > ? AND chat_jid IN (${placeholders})
+        AND is_bot_message = 0 AND content NOT LIKE ?
+        AND content != '' AND content IS NOT NULL
+      ORDER BY timestamp DESC
+      LIMIT ?
+    ) sub ORDER BY timestamp
   `;
 
   const rows = db
     .prepare(sql)
-    .all(lastTimestamp, ...jids, `${botPrefix}:%`) as Array<
+    .all(lastTimestamp, ...jids, `${botPrefix}:%`, limit) as Array<
     NewMessage & { thread_ts: string | null }
   >;
 
@@ -383,20 +388,26 @@ export function getMessagesSince(
   sinceTimestamp: string,
   botPrefix: string,
   threadTs?: string,
+  limit = 200,
 ): NewMessage[] {
   // Filter bot messages using both the is_bot_message flag AND the content
   // prefix as a backstop for messages written before the migration ran.
+  // Use a DESC LIMIT subquery to cap rows, then re-sort chronologically.
   const threadFilter = threadTs !== undefined ? ' AND thread_ts = ?' : '';
   const sql = `
-    SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, thread_ts
-    FROM messages
-    WHERE chat_jid = ? AND timestamp > ?
-      AND is_bot_message = 0 AND content NOT LIKE ?
-      AND content != '' AND content IS NOT NULL${threadFilter}
-    ORDER BY timestamp
+    SELECT * FROM (
+      SELECT id, chat_jid, sender, sender_name, content, timestamp, is_from_me, thread_ts
+      FROM messages
+      WHERE chat_jid = ? AND timestamp > ?
+        AND is_bot_message = 0 AND content NOT LIKE ?
+        AND content != '' AND content IS NOT NULL${threadFilter}
+      ORDER BY timestamp DESC
+      LIMIT ?
+    ) sub ORDER BY timestamp
   `;
   const params: (string | number)[] = [chatJid, sinceTimestamp, `${botPrefix}:%`];
   if (threadTs !== undefined) params.push(threadTs);
+  params.push(limit);
 
   const rows = db
     .prepare(sql)
