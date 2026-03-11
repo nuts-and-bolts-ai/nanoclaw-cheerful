@@ -148,6 +148,12 @@ def create_list(title: str) -> dict:
         return json.loads(r.read())
 ```
 
+After creating a list, always share the link with the user:
+```python
+list_id = new_list['id']
+print(f"List created: https://app.cheerful.ai/{list_id}")
+```
+
 ## Add Creators from Search to List
 
 Pass the search results directly — include `avatar_url` so profile pictures show in the UI.
@@ -214,6 +220,7 @@ print(f"Found {results['total']} creators")
 # 2. Create a list
 new_list = create_list('UK Wellness Micro-Influencers - March 2026')
 list_id = new_list['id']
+print(f"List created: https://app.cheerful.ai/{list_id}")
 
 # 3. Add search results to the list (include avatar_url!)
 creators_to_add = [
