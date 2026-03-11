@@ -204,20 +204,38 @@ function buildVolumeMounts(
   }
 
   // Sync skills from container/skills/ into each group's .claude/skills/
+  // Also merge in group-specific skills from groups/{folder}/.claude/skills/.
   // If skill content changed, clear the session so the agent picks up the new skills.
   const skillsSrc = path.join(process.cwd(), 'container', 'skills');
+  const groupSkillsSrc = path.join(resolveGroupFolderPath(group.folder), '.claude', 'skills');
   const skillsDst = path.join(groupSessionsDir, 'skills');
-  if (fs.existsSync(skillsSrc)) {
+  if (fs.existsSync(skillsSrc) || fs.existsSync(groupSkillsSrc)) {
     const oldHash = hashDirectory(skillsDst);
     const srcSkills = new Set<string>();
-    for (const skillDir of fs.readdirSync(skillsSrc)) {
-      const srcDir = path.join(skillsSrc, skillDir);
-      if (!fs.statSync(srcDir).isDirectory()) continue;
-      srcSkills.add(skillDir);
-      const dstDir = path.join(skillsDst, skillDir);
-      fs.cpSync(srcDir, dstDir, { recursive: true });
+
+    // Copy global skills (container/skills/)
+    if (fs.existsSync(skillsSrc)) {
+      for (const skillDir of fs.readdirSync(skillsSrc)) {
+        const srcDir = path.join(skillsSrc, skillDir);
+        if (!fs.statSync(srcDir).isDirectory()) continue;
+        srcSkills.add(skillDir);
+        const dstDir = path.join(skillsDst, skillDir);
+        fs.cpSync(srcDir, dstDir, { recursive: true });
+      }
     }
-    // Remove skills that no longer exist in source
+
+    // Copy group-specific skills (groups/{folder}/.claude/skills/), overriding globals if same name
+    if (fs.existsSync(groupSkillsSrc)) {
+      for (const skillDir of fs.readdirSync(groupSkillsSrc)) {
+        const srcDir = path.join(groupSkillsSrc, skillDir);
+        if (!fs.statSync(srcDir).isDirectory()) continue;
+        srcSkills.add(skillDir);
+        const dstDir = path.join(skillsDst, skillDir);
+        fs.cpSync(srcDir, dstDir, { recursive: true });
+      }
+    }
+
+    // Remove skills that no longer exist in either source
     if (fs.existsSync(skillsDst)) {
       for (const existing of fs.readdirSync(skillsDst)) {
         if (!srcSkills.has(existing)) {
