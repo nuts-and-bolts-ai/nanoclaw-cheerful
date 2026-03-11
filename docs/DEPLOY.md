@@ -60,38 +60,42 @@ loginctl enable-linger nanoclaw
 
 # Create service file
 mkdir -p ~/.config/systemd/user
-cat > ~/.config/systemd/user/nanoclaw-cheerful.service << 'EOF'
+cat > ~/.config/systemd/user/nanoclaw.service << 'EOF'
 [Unit]
-Description=nanoclaw-cheerful
+Description=NanoClaw Personal Assistant
 After=network.target
 
 [Service]
 Type=simple
+ExecStart=/usr/bin/node /home/nanoclaw/nanoclaw-cheerful/dist/index.js
 WorkingDirectory=/home/nanoclaw/nanoclaw-cheerful
-ExecStart=/usr/bin/node dist/index.js
 Restart=always
 RestartSec=5
-StandardOutput=journal
-StandardError=journal
+Environment=HOME=/home/nanoclaw
+Environment=PATH=/usr/local/bin:/usr/bin:/bin:/home/nanoclaw/.local/bin
+EnvironmentFile=/home/nanoclaw/nanoclaw-cheerful/.env
+StandardOutput=append:/home/nanoclaw/nanoclaw-cheerful/logs/nanoclaw.log
+StandardError=append:/home/nanoclaw/nanoclaw-cheerful/logs/nanoclaw.error.log
 
 [Install]
 WantedBy=default.target
 EOF
 
+mkdir -p ~/nanoclaw-cheerful/logs
 systemctl --user daemon-reload
-systemctl --user enable nanoclaw-cheerful
-systemctl --user start nanoclaw-cheerful
-systemctl --user status nanoclaw-cheerful
+systemctl --user enable nanoclaw
+systemctl --user start nanoclaw
+systemctl --user status nanoclaw
 ```
 
 ## Verify it's running
 
 ```bash
 # Check service status
-systemctl --user status nanoclaw-cheerful
+systemctl --user status nanoclaw
 
 # Tail logs
-journalctl --user -u nanoclaw-cheerful -f
+tail -f ~/nanoclaw-cheerful/logs/nanoclaw.log
 ```
 
 ## Register the #cheerful-ai channel
@@ -116,7 +120,7 @@ After the service is running:
 
 ```bash
 git push origin main
-ssh nanoclaw@<vps-ip> "cd ~/nanoclaw-cheerful && git pull && npm run build && systemctl --user restart nanoclaw-cheerful"
+ssh nanoclaw@<vps-ip> "cd ~/nanoclaw-cheerful && git pull && npm run build && systemctl --user restart nanoclaw"
 ```
 
 ## Deploying updates (container/skills changed)
@@ -125,13 +129,13 @@ If you changed anything in `container/` (Dockerfile, agent-runner, or skills):
 
 ```bash
 git push origin main
-ssh nanoclaw@<vps-ip> "cd ~/nanoclaw-cheerful && git pull && ./container/build.sh && npm run build && systemctl --user restart nanoclaw-cheerful"
+ssh nanoclaw@<vps-ip> "cd ~/nanoclaw-cheerful && git pull && ./container/build.sh && npm run build && systemctl --user restart nanoclaw"
 ```
 
 ## Troubleshooting
 
 **Bot doesn't respond:**
-- Check `journalctl --user -u nanoclaw-cheerful -f` for errors
+- Check `tail -f ~/nanoclaw-cheerful/logs/nanoclaw.log` for errors
 - Verify `SLACK_BOT_TOKEN` and `SLACK_APP_TOKEN` are set correctly in `.env`
 - Ensure the bot is invited to the channel
 

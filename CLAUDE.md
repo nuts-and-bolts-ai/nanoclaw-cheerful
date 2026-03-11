@@ -8,21 +8,21 @@ NanoClaw runs on a **Hetzner VPS** (CX23, Ubuntu 24.04, eu-central):
 - **IP:** 46.225.110.16
 - **User:** `nanoclaw`
 - **SSH:** `ssh nanoclaw@46.225.110.16`
-- **Install path:** `~/nanoclaw`
+- **Install path:** `~/nanoclaw-cheerful`
 - **Service:** `systemctl --user {start|stop|restart|status} nanoclaw`
-- **Logs:** `~/nanoclaw/logs/nanoclaw.log`
+- **Logs:** `~/nanoclaw-cheerful/logs/nanoclaw.log`
 
 The local repo on the laptop is for development only. To deploy changes:
 ```bash
 git push origin main
 ssh nanoclaw@46.225.110.16 "docker ps --format '{{.Names}}' | grep nanoclaw | xargs -r docker kill"
-ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw && git pull && npm run build && systemctl --user restart nanoclaw"
+ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw-cheerful && git pull && npm run build && systemctl --user restart nanoclaw"
 ```
 
 If the container image changed (Dockerfile, agent-runner, or skills that need rebuild):
 ```bash
 ssh nanoclaw@46.225.110.16 "docker ps --format '{{.Names}}' | grep nanoclaw | xargs -r docker kill"
-ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw && git pull && ./container/build.sh && npm run build && systemctl --user restart nanoclaw"
+ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw-cheerful && git pull && ./container/build.sh && npm run build && systemctl --user restart nanoclaw"
 ```
 
 **Always kill stale containers before restarting.** Old containers keep running with old code and can send duplicate/outdated responses.
@@ -71,7 +71,7 @@ Service management (run on VPS via SSH):
 ```bash
 ssh nanoclaw@46.225.110.16 "systemctl --user restart nanoclaw"
 ssh nanoclaw@46.225.110.16 "systemctl --user status nanoclaw"
-ssh nanoclaw@46.225.110.16 "tail -50 ~/nanoclaw/logs/nanoclaw.log"
+ssh nanoclaw@46.225.110.16 "tail -50 ~/nanoclaw-cheerful/logs/nanoclaw.log"
 ```
 
 ## Adding or Updating Agent Skills
@@ -92,15 +92,15 @@ Skills live in `container/skills/{name}/SKILL.md`. When adding or changing skill
    ```bash
    git push origin main
    # If agent-runner changed:
-   ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw && git pull && ./container/build.sh && npm run build && systemctl --user restart nanoclaw"
+   ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw-cheerful && git pull && ./container/build.sh && npm run build && systemctl --user restart nanoclaw"
    # Otherwise:
-   ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw && git pull && npm run build && systemctl --user restart nanoclaw"
+   ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw-cheerful && git pull && npm run build && systemctl --user restart nanoclaw"
    ```
 
 4. **Kill stale containers and clear sessions** — critical for skill changes to take effect
    ```bash
    ssh nanoclaw@46.225.110.16 "docker ps --format '{{.Names}}' | grep nanoclaw | xargs -r docker kill"
-   ssh nanoclaw@46.225.110.16 "sqlite3 ~/nanoclaw/store/messages.db 'DELETE FROM sessions'"
+   ssh nanoclaw@46.225.110.16 "sqlite3 ~/nanoclaw-cheerful/store/messages.db 'DELETE FROM sessions'"
    ssh nanoclaw@46.225.110.16 "systemctl --user restart nanoclaw"
    ```
    The session-clear code in `container-runner.ts` handles this automatically on skill hash changes, but stale containers from before the restart can write old sessions back. Always kill containers first.
