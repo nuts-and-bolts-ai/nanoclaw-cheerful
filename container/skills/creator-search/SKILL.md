@@ -150,7 +150,7 @@ def create_list(title: str) -> dict:
 
 ## Add Creators from Search to List
 
-Pass the search results directly — include `profile_pic_url` so profile pictures show in the UI.
+Pass the search results directly — include `avatar_url` so profile pictures show in the UI.
 
 ```python
 def add_creators_to_list(list_id: str, creators: list) -> dict:
@@ -171,7 +171,7 @@ creators_to_add = [
         'handle': c['username'],
         'name': c.get('full_name'),
         'follower_count': c.get('follower_count', 0),
-        'profile_pic_url': c.get('profile_pic_url'),
+        'avatar_url': c.get('profile_pic_url'),  # backend expects avatar_url
     }
     for c in search_results['creators']
 ]
@@ -215,14 +215,14 @@ print(f"Found {results['total']} creators")
 new_list = create_list('UK Wellness Micro-Influencers - March 2026')
 list_id = new_list['id']
 
-# 3. Add search results to the list (include profile_pic_url!)
+# 3. Add search results to the list (include avatar_url!)
 creators_to_add = [
     {
         'platform': 'instagram',
         'handle': c['username'],
         'name': c.get('full_name'),
         'follower_count': c.get('follower_count', 0),
-        'profile_pic_url': c.get('profile_pic_url'),
+        'avatar_url': c.get('profile_pic_url'),  # backend expects avatar_url
     }
     for c in results['creators']
 ]
