@@ -515,7 +515,7 @@ def list_pending_drafts(campaign_id: str) -> list:
     """
     # Get all campaign creators
     creators = supabase_get('campaign_creator',
-        f'campaign_id=eq.{campaign_id}&select=id,name,email,source_gmail_thread_id')
+        f'campaign_id=eq.{campaign_id}&select=id,name,email,source_gmail_thread_id,gifting_discount_code')
 
     if not creators:
         print("No creators found for this campaign")
@@ -537,6 +537,7 @@ def list_pending_drafts(campaign_id: str) -> list:
             'gmail_thread_state_id': s['id'],
             'creator_name': creator.get('name', 'Unknown'),
             'creator_email': creator.get('email', 'Unknown'),
+            'gifting_discount_code': creator.get('gifting_discount_code'),
         })
 
     print(f"Found {len(results)} pending drafts for campaign {campaign_id}")
@@ -628,9 +629,78 @@ amended = amend_draft(
 print(f"Draft amended — source now: {amended.get('source', 'human')}")
 ```
 
+### Choosing Bulk vs Individual Amendment
+
+**Use bulk amendment** (`bulk_amend_drafts()`) when the edit is the same for every draft — e.g., "add a booklet link", "change the sign-off", "make the tone more casual". The backend applies the same instruction to all drafts.
+
+**Use individual amendment** (`amend_draft()` in a loop) when each draft needs per-creator data — e.g., discount codes, personalised product links, or any value that differs between creators. The bulk endpoint CANNOT inject per-creator data — it sends the same instruction to all drafts, which results in the same value being hardcoded across all emails.
+
+**Rule of thumb:** If the edit references anything from the database that varies per creator (discount codes, addresses, product selections), you MUST use the individual approach.
+
+### Individual Amendment with Per-Creator Data (e.g., Discount Codes)
+
+Use this approach when each draft needs unique per-creator values. Discount codes are stored on `campaign_creator.gifting_discount_code` and are included in `list_pending_drafts()` results.
+
+```python
+def amend_drafts_with_creator_data(campaign_id: str, user_email: str, edit_fn):
+    """Amend drafts one-by-one using per-creator data.
+
+    edit_fn(draft_body_text, pending_draft) -> new_body_text or None to skip.
+    pending_draft has keys: gmail_thread_id, gmail_thread_state_id, creator_name,
+                            creator_email, gifting_discount_code
+    """
+    pending = list_pending_drafts(campaign_id)
+    results = []
+
+    for d in pending:
+        draft = get_draft(d['gmail_thread_id'], user_email)
+        new_body = edit_fn(draft['draft_body_text'], d)
+        if new_body is None:
+            results.append({'creator': d['creator_name'], 'status': 'skipped', 'reason': 'no change needed'})
+            continue
+        try:
+            amend_draft(
+                gmail_thread_id=d['gmail_thread_id'],
+                gmail_thread_state_id=d['gmail_thread_state_id'],
+                user_email=user_email,
+                draft_body_text=new_body
+            )
+            results.append({'creator': d['creator_name'], 'status': 'amended'})
+        except Exception as e:
+            results.append({'creator': d['creator_name'], 'status': 'error', 'reason': str(e)})
+
+    return results
+
+# Example: add each creator's unique discount code to their draft
+def add_discount_code(body_text, pending_draft):
+    code = pending_draft.get('gifting_discount_code')
+    if not code:
+        return None  # No discount code for this creator, skip
+    if code.lower() in body_text.lower():
+        return None  # Already has the code, skip
+    return body_text + f'\n\nYour exclusive discount code is: {code}'
+
+# First, show the user what will happen
+pending = list_pending_drafts('campaign-uuid')
+with_code = [d for d in pending if d.get('gifting_discount_code')]
+without_code = [d for d in pending if not d.get('gifting_discount_code')]
+print(f"{len(with_code)} drafts will get their unique discount code added")
+if without_code:
+    print(f"WARNING: {len(without_code)} creators have no discount code in the DB:")
+    for d in without_code:
+        print(f"  - {d['creator_name']} ({d['creator_email']})")
+
+# After user confirms:
+results = amend_drafts_with_creator_data('campaign-uuid', 'dan.stevenson@spacegoods.com', add_discount_code)
+for r in results:
+    print(f"  {r['creator']}: {r['status']}" + (f" ({r.get('reason', '')})" if r.get('reason') else ''))
+```
+
 ### Bulk Amend Drafts
 
 Apply an edit instruction to all pending LLM drafts in a campaign. The backend fans this out via a Temporal workflow — each draft is individually edited by Claude using the instruction.
+
+**IMPORTANT:** Only use this when the edit is identical for every draft. If the edit involves per-creator data (discount codes, personalised values), use the individual amendment approach above instead.
 
 **Key behaviors:**
 - Only touches LLM drafts that have NOT been manually edited (skips threads with UI drafts)
