@@ -546,6 +546,7 @@ async function main(): Promise<void> {
     'LINEAR_API_KEY', 'SLACK_BOT_TOKEN',
     'SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'CHEERFUL_BACKEND_URL',
     'ROLLBAR_READ_TOKEN',
+    'GOOGLE_SERVICE_ACCOUNT_JSON',
   ];
   const bashVisibleSecrets = new Set([
     ...DEFAULT_BASH_SECRETS,
