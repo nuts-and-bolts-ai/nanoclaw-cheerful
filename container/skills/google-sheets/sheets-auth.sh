@@ -3,6 +3,7 @@
 # Usage: TOKEN=$(sheets-auth.sh) → outputs access token to stdout
 # Requires: GOOGLE_SERVICE_ACCOUNT_JSON env var, openssl, curl
 set -euo pipefail
+umask 077
 
 CACHE_FILE="/tmp/gsheets-token"
 CACHE_EXPIRY="/tmp/gsheets-token-expiry"
@@ -34,7 +35,7 @@ claims=$(echo -n "{\"iss\":\"${client_email}\",\"scope\":\"https://www.googleapi
 
 # Sign
 signing_input="${header}.${claims}"
-signature=$(echo -n "$signing_input" | openssl dgst -sha256 -sign <(echo "$private_key") | openssl base64 -e | tr -d '\n=' | tr '+/' '-_')
+signature=$(echo -n "$signing_input" | openssl dgst -sha256 -sign <(printf '%s\n' "$private_key") | openssl base64 -e | tr -d '\n=' | tr '+/' '-_')
 jwt="${signing_input}.${signature}"
 
 # Exchange for access token

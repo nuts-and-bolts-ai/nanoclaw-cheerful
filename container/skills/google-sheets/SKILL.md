@@ -12,8 +12,8 @@ Read and update cells in Google Sheets via the Sheets API v4 using a service acc
 Get an access token (cached for 1 hour):
 
 ```bash
-SKILL_DIR="$(find /home/node/.claude/skills -name sheets-auth.sh -path '*/google-sheets/*' | head -1)"
-TOKEN=$("$SKILL_DIR")
+AUTH="$(find /home/node/.claude/skills -name sheets-auth.sh -path '*/google-sheets/*' | head -1)"
+TOKEN=$("$AUTH")
 ```
 
 Always run this before any API call. The token is cached automatically.
@@ -146,6 +146,8 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 ```
 
 Then use the tab name in range references: `TabName!A1:Z1` instead of `Sheet1!A1:Z1`.
+
+**Tab names with spaces:** Wrap in single quotes: `'Q1 Revenue'!A1:Z1`. In curl URLs, URL-encode the quotes as `%27`, e.g., `%27Q1%20Revenue%27!A1:Z1`.
 
 ## Error Handling
 
