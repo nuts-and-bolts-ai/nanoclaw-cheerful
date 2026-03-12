@@ -398,6 +398,40 @@ export class GroupQueue {
     }
   }
 
+  getRunningContainers(): Array<{
+    groupJid: string;
+    containerName: string;
+    groupFolder: string | null;
+    isTaskContainer: boolean;
+    runningTaskId: string | null;
+    startedAt: number;
+  }> {
+    const result: Array<{
+      groupJid: string;
+      containerName: string;
+      groupFolder: string | null;
+      isTaskContainer: boolean;
+      runningTaskId: string | null;
+      startedAt: number;
+    }> = [];
+    for (const [jid, state] of this.groups) {
+      if (state.active && state.containerName) {
+        // Extract timestamp from container name: nanoclaw-{folder}-{timestamp}
+        const match = state.containerName.match(/-(\d+)$/);
+        const startedAt = match ? parseInt(match[1], 10) : Date.now();
+        result.push({
+          groupJid: jid,
+          containerName: state.containerName,
+          groupFolder: state.groupFolder,
+          isTaskContainer: state.isTaskContainer,
+          runningTaskId: state.runningTaskId,
+          startedAt,
+        });
+      }
+    }
+    return result;
+  }
+
   async shutdown(_gracePeriodMs: number): Promise<void> {
     this.shuttingDown = true;
 

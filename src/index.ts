@@ -48,6 +48,7 @@ import {
   loadSenderAllowlist,
   shouldDropMessage,
 } from './sender-allowlist.js';
+import { startDashboard } from './dashboard.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
@@ -501,6 +502,12 @@ async function main(): Promise<void> {
   initDatabase();
   logger.info('Database initialized');
   loadState();
+
+  // Start dashboard
+  startDashboard({
+    queue,
+    registeredGroups: () => registeredGroups,
+  });
 
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {

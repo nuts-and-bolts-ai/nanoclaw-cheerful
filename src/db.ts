@@ -553,6 +553,34 @@ export function logTaskRun(log: TaskRunLog): void {
   );
 }
 
+/**
+ * Get the most recent non-bot messages for a chat (optionally filtered by thread).
+ * Used by the dashboard to show what triggered a running container.
+ */
+export function getRecentMessages(
+  chatJid: string,
+  threadTs?: string,
+  limit = 3,
+): Array<{ sender_name: string; content: string; timestamp: string }> {
+  const threadFilter = threadTs ? ' AND thread_ts = ?' : '';
+  const sql = `
+    SELECT sender_name, content, timestamp FROM messages
+    WHERE chat_jid = ? AND is_bot_message = 0
+      AND content != '' AND content IS NOT NULL${threadFilter}
+    ORDER BY timestamp DESC LIMIT ?
+  `;
+  const params: (string | number)[] = [chatJid];
+  if (threadTs) params.push(threadTs);
+  params.push(limit);
+  return (
+    db.prepare(sql).all(...params) as Array<{
+      sender_name: string;
+      content: string;
+      timestamp: string;
+    }>
+  ).reverse();
+}
+
 // --- Router state accessors ---
 
 export function getRouterState(key: string): string | undefined {
