@@ -375,7 +375,7 @@ async function startMessageLoop(): Promise<void> {
 
   logger.info(`NanoClaw running (trigger: @${ASSISTANT_NAME})`);
 
-  while (true) {
+  while (messageLoopRunning) {
     try {
       const jids = Object.keys(registeredGroups);
       const { messages, newTimestamp } = getNewMessages(
@@ -505,8 +505,12 @@ async function main(): Promise<void> {
   // Graceful shutdown handlers
   const shutdown = async (signal: string) => {
     logger.info({ signal }, 'Shutdown signal received');
+    messageLoopRunning = false;
     await queue.shutdown(10000);
+    saveState();
+    logger.info('State saved, disconnecting channels');
     for (const ch of channels) await ch.disconnect();
+    logger.info('Graceful shutdown complete');
     process.exit(0);
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));
