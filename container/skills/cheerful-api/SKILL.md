@@ -72,6 +72,107 @@ def get_user_email(user_id: str) -> str:
     return user['email']
 ```
 
+## List Shopify Products
+
+Look up all active Shopify products for a campaign's store. Uses the GoAffPro store proxy (same source as the frontend UI). Useful when you need to find a product ID or variant ID by name.
+
+```python
+def list_shopify_products(campaign_id: str) -> list:
+    """Fetch all active Shopify products for a campaign's connected store.
+
+    Returns list of dicts: {id, name, handle, vendor, product_type, variations: [{id, name, price, sku}]}
+    """
+    # Step 1: Get the GoAffPro API key from campaign_workflow config
+    url = f"{SUPABASE_URL}/rest/v1/campaign_workflow?campaign_id=eq.{campaign_id}&select=config"
+    req = urllib.request.Request(url, headers={
+        'apikey': SERVICE_KEY,
+        'Authorization': f'Bearer {SERVICE_KEY}',
+    })
+    with urllib.request.urlopen(req) as r:
+        workflows = json.loads(r.read())
+
+    api_key = None
+    for w in workflows:
+        if w.get('config') and w['config'].get('goaffpro_api_key'):
+            api_key = w['config']['goaffpro_api_key']
+            break
+    if not api_key:
+        raise ValueError(f"No goaffpro_api_key found in campaign_workflow config for campaign {campaign_id}")
+
+    # Step 2: Fetch products via GoAffPro store proxy (Shopify GraphQL)
+    PROXY_URL = 'https://api.goaffpro.com/v1/admin/store/system/api'
+    PAGE_SIZE = 50
+    MAX_PAGES = 20
+
+    all_products = []
+    cursor = None
+    has_next = True
+    page = 0
+
+    while has_next and page < MAX_PAGES:
+        after = f', after: "{cursor}"' if cursor else ''
+        query = '''{
+          products(first: %d, query: "status:active"%s) {
+            edges {
+              node { id title handle vendor productType
+                variants(first: 20) { edges { node { id title price sku } } }
+              }
+              cursor
+            }
+            pageInfo { hasNextPage endCursor }
+          }
+        }''' % (PAGE_SIZE, after)
+
+        req = urllib.request.Request(
+            PROXY_URL,
+            data=json.dumps({'method': 'POST', 'url': '/graphql.json', 'body': {'query': query}}).encode(),
+            method='POST',
+            headers={
+                'x-goaffpro-access-token': api_key,
+                'Content-Type': 'application/json',
+            }
+        )
+        with urllib.request.urlopen(req) as r:
+            data = json.loads(r.read())
+
+        edges = data['result']['data']['products']['edges']
+        page_info = data['result']['data']['products']['pageInfo']
+
+        for edge in edges:
+            node = edge['node']
+            numeric_id = node['id'].split('/')[-1]  # gid://shopify/Product/123 -> 123
+            all_products.append({
+                'id': numeric_id,
+                'name': node['title'],
+                'handle': node['handle'],
+                'vendor': node['vendor'],
+                'product_type': node.get('productType', ''),
+                'variations': [
+                    {
+                        'id': ve['node']['id'].split('/')[-1],
+                        'name': ve['node']['title'],
+                        'price': ve['node']['price'],
+                        'sku': ve['node'].get('sku', ''),
+                    }
+                    for ve in node['variants']['edges']
+                ],
+            })
+
+        has_next = page_info['hasNextPage']
+        cursor = page_info.get('endCursor')
+        page += 1
+
+    return all_products
+
+# Example: find a product by name
+products = list_shopify_products('your-campaign-uuid')
+for p in products:
+    if 'essential blend' in p['name'].lower():
+        print(f"{p['name']} — Product ID: {p['id']}")
+        for v in p['variations']:
+            print(f"  Variant: {v['name']} — ID: {v['id']} — £{v['price']}")
+```
+
 ## Create Shopify Order
 
 Creates a Shopify order for a creator from their completed workflow execution. After success, automatically updates `campaign_creator`: `gifting_status → ORDERED`, `shopify_order_id → set`, `slack_approval_status → approved`.
