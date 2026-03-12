@@ -16,16 +16,22 @@ The local repo on the laptop is for development only. To deploy changes:
 ```bash
 git push origin main
 ssh nanoclaw@46.225.110.16 "docker ps --format '{{.Names}}' | grep nanoclaw | xargs -r docker kill"
-ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw-cheerful && git pull && npm run build && systemctl --user restart nanoclaw"
+ssh nanoclaw@46.225.110.16 "systemctl --user stop nanoclaw"
+ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw-cheerful && git pull && npm run build"
+ssh nanoclaw@46.225.110.16 "NOW=\$(date -u +%Y-%m-%dT%H:%M:%S.000Z); sqlite3 ~/nanoclaw-cheerful/store/messages.db \"UPDATE router_state SET value = '\$NOW' WHERE key = 'last_timestamp'\""
+ssh nanoclaw@46.225.110.16 "systemctl --user start nanoclaw"
 ```
 
 If the container image changed (Dockerfile, agent-runner, or skills that need rebuild):
 ```bash
 ssh nanoclaw@46.225.110.16 "docker ps --format '{{.Names}}' | grep nanoclaw | xargs -r docker kill"
-ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw-cheerful && git pull && ./container/build.sh && npm run build && systemctl --user restart nanoclaw"
+ssh nanoclaw@46.225.110.16 "systemctl --user stop nanoclaw"
+ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw-cheerful && git pull && ./container/build.sh && npm run build"
+ssh nanoclaw@46.225.110.16 "NOW=\$(date -u +%Y-%m-%dT%H:%M:%S.000Z); sqlite3 ~/nanoclaw-cheerful/store/messages.db \"UPDATE router_state SET value = '\$NOW' WHERE key = 'last_timestamp'\""
+ssh nanoclaw@46.225.110.16 "systemctl --user start nanoclaw"
 ```
 
-**Always kill stale containers before restarting.** Old containers keep running with old code and can send duplicate/outdated responses.
+**Deploy order matters:** kill containers → stop service → build → advance cursor → start service. The service must be stopped before updating the DB (otherwise the DB is locked). Advancing the cursor prevents the bot from replying to already-processed messages after restart.
 
 ## Quick Context
 
@@ -88,22 +94,18 @@ Skills live in `container/skills/{name}/SKILL.md`. When adding or changing skill
    - Agent-runner changes (`container/agent-runner/`): container rebuild required (`./container/build.sh`)
    - Host code changes (`src/`): `npm run build` required
 
-3. **Deploy with verification**
+3. **Deploy** — follow the deploy order from the Deployment section above:
    ```bash
    git push origin main
-   # If agent-runner changed:
-   ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw-cheerful && git pull && ./container/build.sh && npm run build && systemctl --user restart nanoclaw"
-   # Otherwise:
-   ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw-cheerful && git pull && npm run build && systemctl --user restart nanoclaw"
-   ```
-
-4. **Kill stale containers and clear sessions** — critical for skill changes to take effect
-   ```bash
    ssh nanoclaw@46.225.110.16 "docker ps --format '{{.Names}}' | grep nanoclaw | xargs -r docker kill"
+   ssh nanoclaw@46.225.110.16 "systemctl --user stop nanoclaw"
+   # If agent-runner changed, add: ./container/build.sh &&
+   ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw-cheerful && git pull && npm run build"
    ssh nanoclaw@46.225.110.16 "sqlite3 ~/nanoclaw-cheerful/store/messages.db 'DELETE FROM sessions'"
-   ssh nanoclaw@46.225.110.16 "systemctl --user restart nanoclaw"
+   ssh nanoclaw@46.225.110.16 "NOW=\$(date -u +%Y-%m-%dT%H:%M:%S.000Z); sqlite3 ~/nanoclaw-cheerful/store/messages.db \"UPDATE router_state SET value = '\$NOW' WHERE key = 'last_timestamp'\""
+   ssh nanoclaw@46.225.110.16 "systemctl --user start nanoclaw"
    ```
-   The session-clear code in `container-runner.ts` handles this automatically on skill hash changes, but stale containers from before the restart can write old sessions back. Always kill containers first.
+   Session clear forces new sessions on skill changes. Cursor advance prevents phantom replies to old messages.
 
 5. **Verify after deploy** — don't trust "it restarted" as proof
    ```bash
