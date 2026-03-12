@@ -1,43 +1,106 @@
 ---
 name: google-sheets
-description: Read and update Google Sheets — navigate to cells, read values, and write updates with verification. Use when the user shares a Google Sheets URL, asks to update a spreadsheet or tracking sheet, or references cells/rows in a sheet. Builds on agent-browser for Sheets-specific navigation patterns.
-allowed-tools: Bash(agent-browser:*)
+description: Read and update Google Sheets via API — search by value, read/write scattered cells, discover sheet structure. Use when the user shares a Google Sheets URL, asks to update a spreadsheet or tracking sheet, or references cells/rows in a sheet.
 ---
 
-# Google Sheets
+# Google Sheets API
 
-Read and update cells in Google Sheets via browser automation.
+Read and update cells in Google Sheets via the Sheets API v4 using a service account.
 
-## Quick Start
+## Auth
+
+Get an access token (cached for 1 hour):
 
 ```bash
-# Open a sheet
-agent-browser open "https://docs.google.com/spreadsheets/d/SHEET_ID/edit"
-
-# Read a cell
-# 1. Snapshot to find the Name Box
-agent-browser snapshot -i
-# 2. Click the Name Box (look for the input near "Name Box menu button")
-agent-browser click @REF
-# 3. Type the cell reference and press Enter
-agent-browser fill @REF "K175"
-agent-browser press Enter
-# 4. Read the value from the formula bar or active cell
-agent-browser snapshot -i
-agent-browser get text @REF  # formula bar content
-
-# Write a cell (after getting user permission — see Permission Rules)
-# 1. Navigate to the cell (same as above)
-# 2. Press F2 to enter edit mode
-agent-browser press F2
-# 3. Select all and delete existing content
-agent-browser press Control+a
-agent-browser press Backspace
-# 4. Type the new value
-agent-browser type @REF "12/03/26"
-# 5. Press Enter to commit
-agent-browser press Enter
+SKILL_DIR="$(find /home/node/.claude/skills -name sheets-auth.sh -path '*/google-sheets/*' | head -1)"
+TOKEN=$("$SKILL_DIR")
 ```
+
+Always run this before any API call. The token is cached automatically.
+
+## Extracting Sheet ID
+
+From a URL like `https://docs.google.com/spreadsheets/d/ABC123/edit#gid=0`, the sheet ID is `ABC123`.
+
+```bash
+SHEET_ID="ABC123"
+```
+
+If no URL is available, check the campaign config or ask the user.
+
+## Discover Structure (Read Headers)
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/Sheet1!1:1" | python3 -m json.tool
+```
+
+Returns: `{"range":"Sheet1!1:1","majorDimension":"ROWS","values":[["Name","Email","Status","Date",...]]}`
+
+Use the header positions to determine column letters (A=0, B=1, ..., Z=25, AA=26, etc.).
+
+## Search by Value (e.g., find a row by email)
+
+1. Read headers to find which column has emails (e.g., column B).
+2. Fetch the entire column:
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/Sheet1!B:B"
+```
+
+3. Find the matching row number in the returned values array. The array is 0-indexed, so index 0 = row 1, index 1 = row 2, etc.
+
+## Read Scattered Cells
+
+Read multiple non-adjacent cells in a single request:
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values:batchGet?ranges=Sheet1!K175&ranges=Sheet1!M200&ranges=Sheet1!A1"
+```
+
+Returns a `valueRanges` array with one entry per requested range.
+
+## Read a Row
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values/Sheet1!A175:Z175"
+```
+
+## Write Scattered Cells
+
+**IMPORTANT: Get user permission first (see Permission Rules below).**
+
+```bash
+curl -s -X POST \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  "https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values:batchUpdate" \
+  -d '{
+    "valueInputOption": "USER_ENTERED",
+    "data": [
+      {"range": "Sheet1!K175", "values": [["12/03/26"]]},
+      {"range": "Sheet1!M200", "values": [["done"]]}
+    ]
+  }'
+```
+
+`USER_ENTERED` means Google Sheets parses the values as if typed by a user (dates, numbers, formulas work naturally).
+
+## Verify After Write
+
+After writing, read back the cells to confirm:
+
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values:batchGet?ranges=Sheet1!K175&ranges=Sheet1!M200"
+```
+
+Report results to the user:
+- **Match:** "K175: confirmed '12/03/26'"
+- **Mismatch:** "K175: expected '12/03/26' but found '12/3/2026' — Google Sheets auto-formatted"
 
 ## Permission Rules
 
@@ -55,112 +118,37 @@ agent-browser press Enter
 3. Wait for explicit confirmation before writing anything
 4. Never write to a sheet without permission, even for "small" changes
 
-## Cell Navigation (Name Box Technique)
+## Column Letter Helper
 
-The Name Box is the input field in the top-left corner of Google Sheets that shows the current cell reference (e.g., "A1"). Use it to jump directly to any cell.
+To convert a 0-based column index to a letter:
+- 0→A, 1→B, ..., 25→Z, 26→AA, 27→AB, ...
 
-1. Take a snapshot to find the Name Box:
-   ```bash
-   agent-browser snapshot -i
-   ```
-   Look for an input element near the "Name Box menu button" landmark. The Name Box displays the current cell reference.
+```bash
+# Convert column index to letter(s) — e.g., col_letter 0 → A, col_letter 27 → AB
+col_letter() {
+  local n=$1 result=""
+  while true; do
+    result=$(printf "\\$(printf '%03o' $((n % 26 + 65)))")${result}
+    n=$((n / 26 - 1))
+    [[ $n -lt 0 ]] && break
+  done
+  echo "$result"
+}
+```
 
-2. Click the Name Box to select it:
-   ```bash
-   agent-browser click @REF  # the Name Box input
-   ```
+## Handling Multiple Sheets/Tabs
 
-3. Type the target cell reference and press Enter:
-   ```bash
-   agent-browser fill @REF "K175"
-   agent-browser press Enter
-   ```
+If the spreadsheet has multiple tabs, first get metadata:
 
-4. The sheet scrolls to and selects the target cell.
+```bash
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}?fields=sheets.properties.title"
+```
 
-**Finding the Name Box after page changes:** If refs become stale after navigation or dialog dismissal, re-snapshot. The Name Box is always near the top-left, adjacent to the "Name Box menu button" element.
+Then use the tab name in range references: `TabName!A1:Z1` instead of `Sheet1!A1:Z1`.
 
-## Reading Cells
+## Error Handling
 
-After navigating to a cell:
-
-1. Snapshot to get current page elements:
-   ```bash
-   agent-browser snapshot -i
-   ```
-
-2. Read the formula bar content (shows the raw cell value):
-   ```bash
-   agent-browser get text @REF  # the formula bar element
-   ```
-
-To read multiple cells, repeat the navigation + read cycle for each cell.
-
-## Writing Cells
-
-**IMPORTANT: Get user permission first (see Permission Rules above).**
-
-For each cell to write:
-
-1. **Navigate** to the cell via Name Box (see Cell Navigation above)
-
-2. **Press F2** to enter edit mode:
-   ```bash
-   agent-browser press F2
-   ```
-   This is CRITICAL. Without F2, the cell is in command mode where certain characters (especially `/`) trigger Google Sheets shortcuts instead of being typed as literal characters.
-
-3. **Clear** existing content:
-   ```bash
-   agent-browser press Control+a
-   agent-browser press Backspace
-   ```
-
-4. **Type** the new value:
-   ```bash
-   agent-browser type @REF "12/03/26"
-   ```
-   Use `type` (not `fill`) to input characters naturally into the cell editor.
-
-5. **Commit** by pressing Enter:
-   ```bash
-   agent-browser press Enter
-   ```
-
-After writing all cells, **always verify** (see Verification below).
-
-## The `/` Character
-
-The forward slash `/` triggers Google Sheets' help/search menu when typed in command mode. This breaks date entry (e.g., "12/03/26") and any value containing `/`.
-
-**The fix:** Always press F2 before typing. F2 switches from command mode to edit mode, where `/` is treated as a literal character.
-
-Never skip the F2 step when writing values — even if the value doesn't appear to contain special characters, F2 is a safe default.
-
-## Handling Dialogs
-
-Google Sheets may show dialogs that block interaction:
-
-- **Anonymous edit dialog** ("Editors who can view your name and photo..."): Dismiss by clicking "Got it" or the close button. Re-snapshot after dismissal to get fresh element refs.
-- **"View only" banner**: The sheet may not be editable. Inform the user rather than trying to force edits.
-
-After dismissing any dialog, always re-snapshot before continuing — element refs from before the dialog are stale.
-
-## Verification
-
-After every write batch, verify each cell:
-
-1. Navigate to the cell via Name Box
-2. Read the current value from the formula bar
-3. Compare against the intended value
-
-Report results:
-- **Match:** "K175: confirmed '12/03/26'"
-- **Mismatch:** "K175: expected '12/03/26' but found '12/3/2026' — Google Sheets may have auto-formatted the date"
-
-Common auto-formatting issues:
-- Dates reformatted (e.g., "12/03/26" → "12/3/2026" or "2026-03-12")
-- Numbers with leading zeros stripped (e.g., "007" → "7")
-- Text interpreted as formulas (values starting with `=`)
-
-If a mismatch is found, report it to the user and ask how to proceed.
+- **403 Forbidden**: The sheet isn't shared with the service account email. Ask the user to share it with the email from the service account JSON.
+- **404 Not Found**: Wrong sheet ID or the sheet was deleted.
+- **400 Bad Request**: Usually a malformed range. Check the range syntax.
