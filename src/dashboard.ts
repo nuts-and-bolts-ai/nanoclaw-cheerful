@@ -311,6 +311,70 @@ setInterval(refresh, 30000);
 </body>
 </html>`;
 
+function formatDuration(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+
+export function formatStatusMessage(deps: DashboardDeps): string {
+  const active = getActiveTasksData(deps);
+  const scheduled = getScheduledTasksData().filter(
+    (t) => t.status === 'active',
+  );
+  const now = Date.now();
+
+  let msg = '*📊 NanoClaw Status*\n\n';
+
+  if (active.length === 0) {
+    msg += '*Active Tasks:* None\n';
+  } else {
+    msg += `*Active Tasks (${active.length}):*\n`;
+    for (const t of active) {
+      const duration = formatDuration(now - t.startedAt);
+      const type = t.isTaskContainer ? '⏰' : '💬';
+      const trigger =
+        t.triggerMessage.length > 100
+          ? t.triggerMessage.slice(0, 100) + '...'
+          : t.triggerMessage;
+      msg += `${type} *${t.groupName}* — ${duration}, ${t.messageCount} msgs\n`;
+      msg += `> ${trigger}\n`;
+    }
+  }
+
+  msg += '\n';
+
+  if (scheduled.length === 0) {
+    msg += '*Scheduled Tasks:* None\n';
+  } else {
+    msg += `*Scheduled Tasks (${scheduled.length}):*\n`;
+    for (const t of scheduled) {
+      const schedule =
+        t.scheduleType === 'cron'
+          ? t.scheduleValue
+          : `${t.scheduleType}: ${t.scheduleValue}`;
+      const nextRun = t.nextRun
+        ? new Date(t.nextRun).toLocaleString('en-GB', {
+            timeZone: 'UTC',
+            day: '2-digit',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        : '-';
+      msg += `• *${t.groupFolder}* — \`${schedule}\` — next: ${nextRun}\n`;
+      const prompt =
+        t.prompt.length > 80 ? t.prompt.slice(0, 80) + '...' : t.prompt;
+      msg += `> ${prompt}\n`;
+    }
+  }
+
+  return msg;
+}
+
 export function startDashboard(deps: DashboardDeps): void {
   const server = http.createServer((req, res) => {
     if (handleApi(req, res, deps)) return;

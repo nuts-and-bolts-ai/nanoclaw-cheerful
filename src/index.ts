@@ -48,7 +48,7 @@ import {
   loadSenderAllowlist,
   shouldDropMessage,
 } from './sender-allowlist.js';
-import { startDashboard } from './dashboard.js';
+import { formatStatusMessage, startDashboard } from './dashboard.js';
 import { startSchedulerLoop } from './task-scheduler.js';
 import { Channel, NewMessage, RegisteredGroup } from './types.js';
 import { logger } from './logger.js';
@@ -429,6 +429,26 @@ async function startMessageLoop(): Promise<void> {
                   isTriggerAllowed(chatJid, m.sender, allowlistCfg)),
             );
             if (!hasTrigger) continue;
+          }
+
+          // Intercept /status command — respond directly without spawning a container
+          const statusMsg = sessionMessages.find((m) =>
+            /\/status\b/i.test(m.content),
+          );
+          if (statusMsg) {
+            const statusText = formatStatusMessage({
+              queue,
+              registeredGroups: () => registeredGroups,
+            });
+            channel
+              .sendMessage(chatJid, statusText, threadTs)
+              .catch((err) =>
+                logger.error({ chatJid, err }, 'Failed to send status'),
+              );
+            lastAgentTimestamp[sessionKey] =
+              sessionMessages[sessionMessages.length - 1].timestamp;
+            saveState();
+            continue;
           }
 
           // Pull all pending messages for this thread since last processing
