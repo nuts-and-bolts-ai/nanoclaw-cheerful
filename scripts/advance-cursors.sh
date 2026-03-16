@@ -11,7 +11,7 @@ sqlite3 "$DB" "UPDATE router_state SET value = '$NOW' WHERE key = 'last_timestam
 
 # Advance all per-session agent cursors (used by recoverPendingMessages on startup)
 sqlite3 "$DB" "SELECT value FROM router_state WHERE key = 'last_agent_timestamp'" \
-  | python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps({k:'$NOW' for k in d}))" \
+  | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{const o=JSON.parse(d);console.log(JSON.stringify(Object.fromEntries(Object.keys(o).map(k=>[k,'$NOW']))))})" \
   > /tmp/nanoclaw_agent_ts.json
 
 sqlite3 "$DB" "UPDATE router_state SET value = readfile('/tmp/nanoclaw_agent_ts.json') WHERE key = 'last_agent_timestamp'"
