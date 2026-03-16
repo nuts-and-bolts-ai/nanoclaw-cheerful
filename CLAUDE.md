@@ -18,7 +18,7 @@ git push origin main
 ssh nanoclaw@46.225.110.16 "docker ps --format '{{.Names}}' | grep nanoclaw | xargs -r docker kill"
 ssh nanoclaw@46.225.110.16 "systemctl --user stop nanoclaw"
 ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw-cheerful && git pull && npm run build"
-ssh nanoclaw@46.225.110.16 "NOW=\$(date -u +%Y-%m-%dT%H:%M:%S.000Z); sqlite3 ~/nanoclaw-cheerful/store/messages.db \"UPDATE router_state SET value = '\$NOW' WHERE key = 'last_timestamp'\""
+ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw-cheerful && bash scripts/advance-cursors.sh"
 ssh nanoclaw@46.225.110.16 "systemctl --user start nanoclaw"
 ```
 
@@ -27,11 +27,11 @@ If the container image changed (Dockerfile, agent-runner, or skills that need re
 ssh nanoclaw@46.225.110.16 "docker ps --format '{{.Names}}' | grep nanoclaw | xargs -r docker kill"
 ssh nanoclaw@46.225.110.16 "systemctl --user stop nanoclaw"
 ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw-cheerful && git pull && ./container/build.sh && npm run build"
-ssh nanoclaw@46.225.110.16 "NOW=\$(date -u +%Y-%m-%dT%H:%M:%S.000Z); sqlite3 ~/nanoclaw-cheerful/store/messages.db \"UPDATE router_state SET value = '\$NOW' WHERE key = 'last_timestamp'\""
+ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw-cheerful && bash scripts/advance-cursors.sh"
 ssh nanoclaw@46.225.110.16 "systemctl --user start nanoclaw"
 ```
 
-**Deploy order matters:** kill containers → stop service → build → advance cursor → start service. The service must be stopped before updating the DB (otherwise the DB is locked). Advancing the cursor prevents the bot from replying to already-processed messages after restart.
+**Deploy order matters:** kill containers → stop service → build → advance cursors → start service. The service must be stopped before updating the DB (otherwise the DB is locked). There are TWO cursor systems: `last_timestamp` (polling loop) and `last_agent_timestamp` (per-session recovery via `recoverPendingMessages`). The `scripts/advance-cursors.sh` script advances both. The old inline approach silently failed because the 4KB JSON broke shell interpolation into SQL.
 
 ## Quick Context
 
@@ -102,7 +102,7 @@ Skills live in `container/skills/{name}/SKILL.md`. When adding or changing skill
    # If agent-runner changed, add: ./container/build.sh &&
    ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw-cheerful && git pull && npm run build"
    ssh nanoclaw@46.225.110.16 "sqlite3 ~/nanoclaw-cheerful/store/messages.db 'DELETE FROM sessions'"
-   ssh nanoclaw@46.225.110.16 "NOW=\$(date -u +%Y-%m-%dT%H:%M:%S.000Z); sqlite3 ~/nanoclaw-cheerful/store/messages.db \"UPDATE router_state SET value = '\$NOW' WHERE key = 'last_timestamp'\""
+   ssh nanoclaw@46.225.110.16 "cd ~/nanoclaw-cheerful && bash scripts/advance-cursors.sh"
    ssh nanoclaw@46.225.110.16 "systemctl --user start nanoclaw"
    ```
    Session clear forces new sessions on skill changes. Cursor advance prevents phantom replies to old messages.
