@@ -345,6 +345,8 @@ function readSecrets(extraKeys?: string[]): Record<string, string> {
     'LINEAR_API_KEY',
     // Slack API (for on-demand channel reads/writes)
     'SLACK_BOT_TOKEN',
+    // Google Sheets API (service account for google-sheets skill)
+    'GOOGLE_SERVICE_ACCOUNT_JSON',
     // Error tracking
     'SENTRY_AUTH_TOKEN_CHEERFUL',
     // Cheerful backend (Supabase + API)
