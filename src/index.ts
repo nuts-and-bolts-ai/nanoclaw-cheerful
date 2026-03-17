@@ -498,9 +498,12 @@ async function startMessageLoop(): Promise<void> {
  */
 function recoverPendingMessages(): void {
   for (const [chatJid, group] of Object.entries(registeredGroups)) {
-    // Recover non-threaded pending messages
+    // Recover non-threaded pending messages.
+    // Fall back to lastTimestamp (global polling cursor) instead of '' to avoid
+    // replaying all messages from the beginning of time for newly registered groups
+    // that don't yet have an agent cursor.
     const sessionKey = chatJid; // Non-threaded recovery only
-    const sinceTimestamp = lastAgentTimestamp[sessionKey] || '';
+    const sinceTimestamp = lastAgentTimestamp[sessionKey] || lastTimestamp;
     const pending = getMessagesSince(chatJid, sinceTimestamp, ASSISTANT_NAME);
     if (pending.length > 0) {
       logger.info(
