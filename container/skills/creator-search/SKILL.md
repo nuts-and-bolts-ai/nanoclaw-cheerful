@@ -7,6 +7,14 @@ description: Search for Instagram and TikTok creators/influencers by keyword or 
 
 Use the Cheerful creator search API for ALL creator/influencer discovery. **Never scrape Instagram, TikTok, or any social media directly** — the API provides richer data (profile pics, follower counts, engagement rates) and is much faster.
 
+## Account Scoping — CRITICAL
+
+**All API calls must authenticate as the client's account, NOT an admin account.** Lists, searches, and creators are scoped to the authenticated user — using the wrong email creates data in the wrong account.
+
+- **Resolve the client email** from `CLIENT_IDS` in your group's CLAUDE.md using the `get_user_email()` helper from the cheerful-api skill.
+- **If you cannot determine the client email**, ask the user: *"Which email should I use to create this in the correct account?"*
+- **Never hardcode or default to an admin email** (e.g. `chris@nutsandbolts.ai`). Every function in this skill takes a `user_email` parameter — always pass the client's email.
+
 ## Setup (once per session)
 
 ```python
@@ -15,8 +23,6 @@ import urllib.request, urllib.error, json, os
 BACKEND_URL = os.environ.get('CHEERFUL_BACKEND_URL', 'https://prd-cheerful.fly.dev')
 SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
 SERVICE_KEY = os.environ.get('SUPABASE_SERVICE_ROLE_KEY', '')
-ADMIN_EMAIL = 'chris@nutsandbolts.ai'
-
 def get_user_jwt(email: str) -> str:
     """Generate a JWT for a Supabase user via admin magic link + verify."""
     url = f"{SUPABASE_URL}/auth/v1/admin/generate_link"
@@ -58,10 +64,10 @@ POST /api/v1/creator-search/keyword
 ```
 
 ```python
-def search_keyword(keyword: str, platform: str = 'instagram',
+def search_keyword(keyword: str, user_email: str, platform: str = 'instagram',
                    followers_min=None, followers_max=None,
                    location=None) -> dict:
-    jwt = get_user_jwt(ADMIN_EMAIL)
+    jwt = get_user_jwt(user_email)
     body = {
         'keyword': keyword,
         'platform': platform,
@@ -103,10 +109,10 @@ POST /api/v1/creator-search/similar
 ```
 
 ```python
-def search_similar(handle: str, platform: str = 'instagram',
+def search_similar(handle: str, user_email: str, platform: str = 'instagram',
                    followers_min=None, followers_max=None,
                    location=None) -> dict:
-    jwt = get_user_jwt(ADMIN_EMAIL)
+    jwt = get_user_jwt(user_email)
     body = {
         'handle': handle,
         'platform': platform,
@@ -136,8 +142,8 @@ def search_similar(handle: str, platform: str = 'instagram',
 ## Create a List
 
 ```python
-def create_list(title: str) -> dict:
-    jwt = get_user_jwt(ADMIN_EMAIL)
+def create_list(title: str, user_email: str) -> dict:
+    jwt = get_user_jwt(user_email)
     req = urllib.request.Request(
         f'{BACKEND_URL}/api/v1/lists/',
         data=json.dumps({'title': title}).encode(),
@@ -151,7 +157,7 @@ def create_list(title: str) -> dict:
 After creating a list, always share the link with the user:
 ```python
 list_id = new_list['id']
-print(f"List created: https://app.cheerful.ai/list/{list_id}")
+print(f"List created: https://app.cheerful.ai/lists/{list_id}")
 ```
 
 ## Add Creators from Search to List
@@ -159,8 +165,8 @@ print(f"List created: https://app.cheerful.ai/list/{list_id}")
 Pass the search results directly — include `avatar_url` so profile pictures show in the UI.
 
 ```python
-def add_creators_to_list(list_id: str, creators: list) -> dict:
-    jwt = get_user_jwt(ADMIN_EMAIL)
+def add_creators_to_list(list_id: str, creators: list, user_email: str) -> dict:
+    jwt = get_user_jwt(user_email)
     req = urllib.request.Request(
         f'{BACKEND_URL}/api/v1/lists/{list_id}/creators/from-search',
         data=json.dumps({'creators': creators}).encode(),
@@ -186,8 +192,8 @@ creators_to_add = [
 ## List All Lists
 
 ```python
-def get_all_lists() -> dict:
-    jwt = get_user_jwt(ADMIN_EMAIL)
+def get_all_lists(user_email: str) -> dict:
+    jwt = get_user_jwt(user_email)
     req = urllib.request.Request(
         f'{BACKEND_URL}/api/v1/lists/',
         headers={'Authorization': f'Bearer {jwt}'}
@@ -199,8 +205,8 @@ def get_all_lists() -> dict:
 ## Get Creators in a List
 
 ```python
-def get_list_creators(list_id: str) -> dict:
-    jwt = get_user_jwt(ADMIN_EMAIL)
+def get_list_creators(list_id: str, user_email: str) -> dict:
+    jwt = get_user_jwt(user_email)
     req = urllib.request.Request(
         f'{BACKEND_URL}/api/v1/lists/{list_id}/creators',
         headers={'Authorization': f'Bearer {jwt}'}
@@ -220,7 +226,7 @@ print(f"Found {results['total']} creators")
 # 2. Create a list
 new_list = create_list('UK Wellness Micro-Influencers - March 2026')
 list_id = new_list['id']
-print(f"List created: https://app.cheerful.ai/{list_id}")
+print(f"List created: https://app.cheerful.ai/lists/{list_id}")
 
 # 3. Add search results to the list (include avatar_url!)
 creators_to_add = [
