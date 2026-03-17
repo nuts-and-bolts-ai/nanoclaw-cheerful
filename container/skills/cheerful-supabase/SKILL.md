@@ -181,6 +181,7 @@ def get_order_execution(creator_id: str) -> dict | None:
 - Creating Shopify orders (requires backend business logic)
 - Triggering or re-running workflows
 - Launching new campaigns
+- **Adding creators to campaigns** — never INSERT into `campaign_creator` or `campaign_recipient` directly. Use `cheerful-api` skill's `add_creators_from_search()` or `add_recipients_to_campaign()`. Direct inserts skip email enrichment and outbox population.
 
 ## Error handling
 ```python

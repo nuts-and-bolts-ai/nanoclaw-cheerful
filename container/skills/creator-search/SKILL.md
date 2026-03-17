@@ -252,6 +252,12 @@ When the user says "make sure they don't already exist in another list or campai
 3. Collect all existing handles into a set
 4. Filter search results to exclude existing handles before adding to the new list
 
+## Adding Search Results to a Campaign
+
+If the user wants to add creators from search results to an **existing campaign** (not a list), use the `cheerful-api` skill's `add_creators_from_search()` function. Never INSERT into `campaign_creator` or `campaign_recipient` directly via SQL — it skips email enrichment and outbox population.
+
+See: `cheerful-api` skill → "Add Creators from Search Results"
+
 ## Error Handling
 
 ```python
