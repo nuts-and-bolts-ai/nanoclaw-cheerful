@@ -12,7 +12,7 @@ sqlite3 "$DB" "UPDATE router_state SET value = '$NOW' WHERE key = 'last_timestam
 # Advance all per-session agent cursors (used by recoverPendingMessages on startup).
 # Also seed entries for all registered groups' chatJids so newly registered groups
 # that only had thread-level cursors get a channel-level cursor too.
-REGISTERED_JIDS=$(sqlite3 "$DB" "SELECT chat_jid FROM registered_groups" | tr '\n' '|')
+REGISTERED_JIDS=$(sqlite3 "$DB" "SELECT jid FROM registered_groups" | tr '\n' '|')
 
 sqlite3 "$DB" "SELECT value FROM router_state WHERE key = 'last_agent_timestamp'" \
   | node -e "
