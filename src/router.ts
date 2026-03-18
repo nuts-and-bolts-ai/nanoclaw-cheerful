@@ -54,7 +54,7 @@ function convertMarkdownTables(text: string): string {
       if (tableLines.length > 0) {
         // Parse cells from each row
         const rows = tableLines.map(line =>
-          line.split('|').slice(1, -1).map(cell => cell.trim())
+          line.split('|').slice(1, -1).map(cell => cell.trim().replace(/\*\*(.+?)\*\*/g, '$1'))
         );
 
         // Calculate max width per column
@@ -84,10 +84,38 @@ function convertMarkdownTables(text: string): string {
   return result.join('\n');
 }
 
+/**
+ * Convert markdown formatting to Slack mrkdwn, skipping code blocks.
+ * - **bold** → *bold*
+ * - ### headings → *headings*
+ * - --- horizontal rules → ───────
+ */
+function convertMarkdownToSlack(text: string): string {
+  // Split by code blocks to avoid converting inside them
+  const parts = text.split(/(```[\s\S]*?```)/g);
+
+  return parts.map((part, i) => {
+    // Odd indices are code blocks — leave them alone
+    if (i % 2 === 1) return part;
+
+    // Convert **bold** to *bold* (Slack bold)
+    part = part.replace(/\*\*(.+?)\*\*/g, '*$1*');
+
+    // Convert ### headings to bold (any level)
+    part = part.replace(/^#{1,6}\s+(.+)$/gm, '*$1*');
+
+    // Convert --- horizontal rules to a unicode line
+    part = part.replace(/^-{3,}$/gm, '───────────────────────────');
+
+    return part;
+  }).join('');
+}
+
 export function formatOutbound(rawText: string): string {
   let text = stripInternalTags(rawText);
   if (!text) return '';
   text = convertMarkdownTables(text);
+  text = convertMarkdownToSlack(text);
   return text;
 }
 
